@@ -1,0 +1,10 @@
+{
+  "event": "messages.upsert",
+  "instance": "tarot",
+  "data": {
+    "key": { "remoteJid": "5511999990000@s.whatsapp.net", "fromMe": true, "id": "ABC-from-me" },
+    "pushName": "Maria",
+    "messageTimestamp": 1760000000,
+    "message": { "conversation": "resposta do dono" }
+  }
+}
