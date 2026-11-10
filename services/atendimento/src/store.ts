@@ -8,6 +8,8 @@ export type Conversation = {
   engagedAt: number | null;
   openChargeId: string | null;
   stage: 'greeting' | 'offered' | 'awaiting_payment' | 'delivered';
+  /** Horário (ms) da última mensagem do cliente: base da janela de 24 h. */
+  lastInboundAtMs?: number | null;
 };
 
 export type Charge = {
@@ -51,7 +53,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   mode TEXT NOT NULL,
   engaged_at INTEGER,
   open_charge_id TEXT,
-  stage TEXT NOT NULL
+  stage TEXT NOT NULL,
+  last_inbound_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,9 +81,10 @@ CREATE TABLE IF NOT EXISTS notices (
 `;
 
 // Bancos criados antes das colunas novas: adiciona o que falta sem perder dados.
-const CHARGE_COLUMN_MIGRATIONS: { column: string; ddl: string }[] = [
-  { column: 'copy_paste', ddl: 'ALTER TABLE charges ADD COLUMN copy_paste TEXT' },
-  { column: 'delivered', ddl: 'ALTER TABLE charges ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0' },
+const COLUMN_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
+  { table: 'charges', column: 'copy_paste', ddl: 'ALTER TABLE charges ADD COLUMN copy_paste TEXT' },
+  { table: 'charges', column: 'delivered', ddl: 'ALTER TABLE charges ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0' },
+  { table: 'conversations', column: 'last_inbound_at', ddl: 'ALTER TABLE conversations ADD COLUMN last_inbound_at INTEGER' },
 ];
 
 type ConversationRow = {
@@ -89,6 +93,7 @@ type ConversationRow = {
   engaged_at: number | null;
   open_charge_id: string | null;
   stage: Conversation['stage'];
+  last_inbound_at: number | null;
 };
 
 type ChargeRow = {
@@ -107,25 +112,24 @@ type NoticeRow = { id: number; at_ms: number; text: string };
 export function createStore(dbPath: string): Store {
   const db = new DatabaseSync(dbPath);
   db.exec(SCHEMA);
-  const existingColumns = new Set(
-    (db.prepare('PRAGMA table_info(charges)').all() as { name: string }[]).map((c) => c.name),
-  );
-  for (const migration of CHARGE_COLUMN_MIGRATIONS) {
-    if (!existingColumns.has(migration.column)) db.exec(migration.ddl);
+  for (const migration of COLUMN_MIGRATIONS) {
+    const columns = (db.prepare(`PRAGMA table_info(${migration.table})`).all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes(migration.column)) db.exec(migration.ddl);
   }
 
   const insertSeen = db.prepare('INSERT OR IGNORE INTO seen_messages (message_id) VALUES (?)');
   const selectConversation = db.prepare(
-    'SELECT jid, mode, engaged_at, open_charge_id, stage FROM conversations WHERE jid = ?',
+    'SELECT jid, mode, engaged_at, open_charge_id, stage, last_inbound_at FROM conversations WHERE jid = ?',
   );
   const upsertConversation = db.prepare(
-    `INSERT INTO conversations (jid, mode, engaged_at, open_charge_id, stage)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO conversations (jid, mode, engaged_at, open_charge_id, stage, last_inbound_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(jid) DO UPDATE SET
        mode = excluded.mode,
        engaged_at = excluded.engaged_at,
        open_charge_id = excluded.open_charge_id,
-       stage = excluded.stage`,
+       stage = excluded.stage,
+       last_inbound_at = excluded.last_inbound_at`,
   );
   const insertMessage = db.prepare('INSERT INTO messages (jid, role, content) VALUES (?, ?, ?)');
   const selectRecent = db.prepare(
@@ -163,11 +167,12 @@ export function createStore(dbPath: string): Store {
         engagedAt: row.engaged_at,
         openChargeId: row.open_charge_id,
         stage: row.stage,
+        lastInboundAtMs: row.last_inbound_at,
       };
     },
 
     saveConversation(c) {
-      upsertConversation.run(c.jid, c.mode, c.engagedAt, c.openChargeId, c.stage);
+      upsertConversation.run(c.jid, c.mode, c.engagedAt, c.openChargeId, c.stage, c.lastInboundAtMs ?? null);
     },
 
     appendMessage(jid, role, content) {

@@ -167,13 +167,15 @@ export async function handleLead(deps: AgentDeps, msg: InboundMessage): Promise<
   const { store, llm } = deps;
 
   const existing = store.getConversation(msg.jid);
-  const conversation: Conversation = existing ?? {
+  const base: Conversation = existing ?? {
     jid: msg.jid,
     mode: 'ai',
     engagedAt: deps.now(),
     openChargeId: null,
     stage: 'greeting',
   };
+  // Registra a última mensagem do cliente (base da janela de 24 h).
+  const conversation: Conversation = { ...base, lastInboundAtMs: msg.timestampSec * 1000 };
   // Cria a conversa antes de qualquer resposta: a próxima mensagem (sem marca de anúncio) segue atendida.
   store.saveConversation(conversation);
 

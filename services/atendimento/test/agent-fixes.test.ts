@@ -157,6 +157,30 @@ describe('F7: histórico enviado ao LLM', () => {
   });
 });
 
+describe('janela de 24 h: registra a última mensagem do cliente', () => {
+  it('grava o horário da mensagem do cliente (timestamp da mensagem, em ms)', async () => {
+    const llm = fakeLlm([json('Oi!')]);
+
+    await handleLead(deps(llm.client), inbound('oi', { timestampSec: 1_700_000_500 }));
+
+    expect(store.getConversation(JID)!.lastInboundAtMs).toBe(1_700_000_500_000);
+  });
+
+  it('atualiza a cada nova mensagem do cliente', async () => {
+    const llm = fakeLlm([json('Oi!')]);
+    await handleLead(deps(llm.client), inbound('oi', { timestampSec: 1_700_000_500 }));
+    await handleLead(deps(llm.client), inbound('e então?', { timestampSec: 1_700_090_000 }));
+
+    expect(store.getConversation(JID)!.lastInboundAtMs).toBe(1_700_090_000_000);
+  });
+
+  it('também registra quando a mensagem não tem texto', async () => {
+    const llm = fakeLlm([json('x')]);
+    await handleLead(deps(llm.client), inbound(null, { timestampSec: 1_700_000_900 }));
+    expect(store.getConversation(JID)!.lastInboundAtMs).toBe(1_700_000_900_000);
+  });
+});
+
 describe('F9: lead cuja primeira mensagem não tem texto', () => {
   it('cria a conversa antes de pedir o texto, para a próxima mensagem continuar atendida', async () => {
     const llm = fakeLlm([json('não deveria ser chamado')]);

@@ -1,6 +1,6 @@
 export type EvolutionClient = {
   /** Devolve o id da mensagem enviada (para reconhecer o eco no webhook), ou null se a resposta não trouxer. */
-  sendText(jid: string, text: string): Promise<{ messageId: string | null }>;
+  sendText(jid: string, text: string, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
 };
 
 export type EvolutionClientOptions = {
@@ -18,14 +18,19 @@ export function createEvolutionClient(opts: EvolutionClientOptions): EvolutionCl
   const url = `${base}/message/sendText/${encodeURIComponent(opts.instance)}`;
 
   return {
-    async sendText(jid, text) {
+    async sendText(jid, text, sendOpts) {
+      // `delay` (ms) é um campo opcional do sendText da Evolution: ela mostra "digitando..." por esse tempo.
+      const delayMs = sendOpts?.delayMs && sendOpts.delayMs > 0 ? Math.round(sendOpts.delayMs) : undefined;
+      const body = delayMs ? { number: jid, text, delay: delayMs } : { number: jid, text };
+      // O pedido fica aberto durante o atraso: o tempo limite precisa cobrir o atraso.
+      const timeout = Math.max(opts.timeoutMs ?? 15_000, (delayMs ?? 0) + 10_000);
       let response: Response;
       try {
         response = await doFetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json', apikey: opts.apiKey },
-          body: JSON.stringify({ number: jid, text }),
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(timeout),
         });
       } catch {
         throw new Error('Evolution API: falha de rede ao enviar mensagem');

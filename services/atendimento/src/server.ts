@@ -6,6 +6,7 @@ import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
 import { parseWebhook } from './evolution/parse.js';
 import { decide } from './filter.js';
+import { createRateLimiter, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PixProvider } from './pix/provider.js';
@@ -26,6 +27,8 @@ export type ServerDeps = {
   pix: PixProvider;
   evolution: EvolutionClient;
   now: () => number;
+  /** Espera de verdade em produção; nos testes é simulada. */
+  sleep?: (ms: number) => Promise<void>;
   rng?: () => number;
   notifyOwner: (text: string) => void | Promise<void>;
 };
@@ -37,6 +40,16 @@ const BOT_ECHO_WINDOW_MS = 5000;
 // Mensagens mais velhas que isto (ex.: histórico após reconexão) não são respondidas.
 const MAX_MESSAGE_AGE_MS = 10 * 60_000;
 const NOTICES_LIMIT = 50;
+// Janela de 24 h da API oficial do WhatsApp, respeitada por conta própria (pronta para uma troca futura).
+const WINDOW_24H_MS = 24 * 3_600_000;
+const RATE_WINDOW_MS = 60_000;
+
+// Só conversas individuais recebem mensagem. Grupos, status, canais etc. nunca.
+function isIndividualChat(jid: string): boolean {
+  return jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid');
+}
+
+const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const pixBodySchema = z.object({ chargeId: z.string().min(1) });
 
@@ -61,6 +74,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const pending = new Set<Promise<void>>();
   const botActiveUntil = new Map<string, number>();
   const sending = new Set<string>();
+  const limiter = createRateLimiter({
+    perChat: deps.config.maxMsgsPerMinuteChat,
+    global: deps.config.maxMsgsPerMinute,
+    windowMs: RATE_WINDOW_MS,
+    now: deps.now,
+    sleep: deps.sleep ?? realSleep,
+  });
 
   async function safeNotify(text: string): Promise<void> {
     try {
@@ -92,13 +112,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Devolve true só se TODAS as mensagens foram enviadas.
   async function sendAll(jid: string, texts: string[]): Promise<boolean> {
+    if (!isIndividualChat(jid)) {
+      await safeNotify(`Envio recusado: ${jid} não é uma conversa individual (grupos e canais nunca recebem resposta).`);
+      return false;
+    }
     sending.add(jid);
     let allSent = true;
     let missingId = false;
     try {
       for (const text of texts) {
         try {
-          const { messageId } = await deps.evolution.sendText(jid, text);
+          await limiter.acquire(jid);
+          const { messageId } = await deps.evolution.sendText(jid, text, { delayMs: typingDelayMs(text) });
           if (messageId) deps.store.markSeen(messageId);
           else missingId = true;
         } catch {
@@ -157,6 +182,15 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (status !== 'paid') return;
     const replies = await deliverReading(agentDeps, chargeId);
     if (replies.length === 0) return;
+
+    // Janela de 24 h: a entrega segue (o cliente pagou), mas o dono é avisado.
+    const lastInbound = deps.store.getConversation(charge.jid)?.lastInboundAtMs;
+    if (typeof lastInbound === 'number' && deps.now() - lastInbound > WINDOW_24H_MS) {
+      const hours = Math.floor((deps.now() - lastInbound) / 3_600_000);
+      await safeNotify(
+        `Entrega da leitura fora da janela de 24 h no chat ${charge.jid} (última mensagem do cliente há ${hours} h).`,
+      );
+    }
     // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
     if (await sendAll(charge.jid, replies)) markDelivered(deps.store, chargeId);
   }

@@ -19,11 +19,23 @@ export type Config = {
   triggerPhrases: string[];
   blocklist: string[];
   dbPath: string;
+  /** Teto de mensagens enviadas por minuto, por conversa e no total (ritmo humano e proteção do número). */
+  maxMsgsPerMinuteChat: number;
+  maxMsgsPerMinute: number;
 };
 
 const REQUIRED = ['EVOLUTION_URL', 'EVOLUTION_API_KEY', 'WEBHOOK_TOKEN', 'NIM_API_KEY'] as const;
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
+const positiveInt = z.coerce.number().int().positive();
+
+function readPositiveInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = positiveInt.safeParse(raw);
+  if (!parsed.success) throw new ConfigError(`${name} inválida: use um número inteiro maior que zero`);
+  return parsed.data;
+}
 
 function csv(value: string | undefined): string[] {
   return (value ?? '')
@@ -55,5 +67,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     triggerPhrases: csv(env.TRIGGER_PHRASES),
     blocklist: csv(env.BLOCKLIST),
     dbPath: env.DB_PATH?.trim() || './data/atendimento.db',
+    maxMsgsPerMinuteChat: readPositiveInt(env, 'MAX_MSGS_PER_MIN_CHAT', 6),
+    maxMsgsPerMinute: readPositiveInt(env, 'MAX_MSGS_PER_MIN', 20),
   };
 }

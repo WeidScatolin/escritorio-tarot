@@ -38,6 +38,20 @@ describe('loadConfig', () => {
     expect(config.blocklist).toEqual([]);
   });
 
+  it('limites de mensagens por minuto: defaults 6 por conversa e 20 no total, configuráveis', () => {
+    const defaults = loadConfig(REQUIRED);
+    expect(defaults.maxMsgsPerMinuteChat).toBe(6);
+    expect(defaults.maxMsgsPerMinute).toBe(20);
+
+    const custom = loadConfig({ ...REQUIRED, MAX_MSGS_PER_MIN_CHAT: '3', MAX_MSGS_PER_MIN: '10' });
+    expect(custom.maxMsgsPerMinuteChat).toBe(3);
+    expect(custom.maxMsgsPerMinute).toBe(10);
+  });
+
+  it.each(['0', '-1', 'abc', '1.5'])('limite inválido "%s" lança ConfigError', (value) => {
+    expect(() => loadConfig({ ...REQUIRED, MAX_MSGS_PER_MIN: value })).toThrow(ConfigError);
+  });
+
   it('converte CSV em listas aparando espaços e descartando vazios', () => {
     const config = loadConfig({
       ...REQUIRED,

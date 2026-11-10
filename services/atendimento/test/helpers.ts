@@ -23,6 +23,8 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     triggerPhrases: [],
     blocklist: [],
     dbPath: ':memory:',
+    maxMsgsPerMinuteChat: 50,
+    maxMsgsPerMinute: 500,
     ...over,
   };
 }
@@ -36,7 +38,8 @@ export type Harness = ReturnType<typeof makeHarness>;
 export function makeHarness(
   opts: { llm?: LlmResult[]; config?: Partial<Config>; sendFails?: boolean; sendReturnsNoId?: boolean } = {},
 ) {
-  const sent: { jid: string; text: string; messageId: string | null }[] = [];
+  const sent: { jid: string; text: string; messageId: string | null; delayMs: number | undefined }[] = [];
+  const sleeps: number[] = [];
   const notices: string[] = [];
   const llmCalls: { system: string; messages: { role: string; content: string }[] }[] = [];
   const clock = { t: T0 };
@@ -51,11 +54,11 @@ export function makeHarness(
     },
   };
   const evolution: EvolutionClient = {
-    async sendText(jid, text) {
+    async sendText(jid, text, sendOpts) {
       if (flags.sendFails) throw new Error(`boom apikey=${API_KEY}`);
       counter += 1;
       const messageId = opts.sendReturnsNoId ? null : `sent-${counter}`;
-      sent.push({ jid, text, messageId });
+      sent.push({ jid, text, messageId, delayMs: sendOpts?.delayMs });
       return { messageId };
     },
   };
@@ -69,11 +72,16 @@ export function makeHarness(
     pix,
     evolution,
     now: () => clock.t,
+    // Espera simulada: registra e avança o relógio falso, sem esperar de verdade.
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      clock.t += ms;
+    },
     notifyOwner: (text) => {
       notices.push(text);
     },
   };
-  return { deps, sent, notices, llmCalls, clock, flags, store, pix };
+  return { deps, sent, sleeps, notices, llmCalls, clock, flags, store, pix };
 }
 
 export function upsert(o: {

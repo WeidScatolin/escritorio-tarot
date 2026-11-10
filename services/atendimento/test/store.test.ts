@@ -23,12 +23,14 @@ describe('store', () => {
       openChargeId: null,
       stage: 'greeting',
     };
+    // Sem lastInboundAtMs informado, volta null (padrão).
+    const defaults = { lastInboundAtMs: null };
     store.saveConversation(c);
-    expect(store.getConversation(c.jid)).toEqual(c);
+    expect(store.getConversation(c.jid)).toEqual({ ...c, ...defaults });
 
     const updated: Conversation = { ...c, mode: 'human', openChargeId: 'ch1', stage: 'awaiting_payment' };
     store.saveConversation(updated);
-    expect(store.getConversation(c.jid)).toEqual(updated);
+    expect(store.getConversation(c.jid)).toEqual({ ...updated, ...defaults });
   });
 
   it('recentMessages devolve em ordem cronologica e respeita o limit', () => {

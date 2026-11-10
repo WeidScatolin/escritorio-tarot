@@ -26,6 +26,18 @@ describe('createEvolutionClient.sendText', () => {
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ number: '5511999990000@s.whatsapp.net', text: 'Olá!' });
   });
 
+  it('com delayMs, manda o campo delay (digitação simulada); sem delayMs, não manda', async () => {
+    const withDelay = fakeFetch(201);
+    const a = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl: withDelay.fetchImpl });
+    await a.sendText('a@s.whatsapp.net', 'oi', { delayMs: 2300 });
+    expect(JSON.parse(String(withDelay.calls[0]!.init.body))).toEqual({ number: 'a@s.whatsapp.net', text: 'oi', delay: 2300 });
+
+    const without = fakeFetch(201);
+    const b = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl: without.fetchImpl });
+    await b.sendText('a@s.whatsapp.net', 'oi');
+    expect(JSON.parse(String(without.calls[0]!.init.body))).toEqual({ number: 'a@s.whatsapp.net', text: 'oi' });
+  });
+
   it('devolve o id da mensagem enviada (key.id) para o servidor reconhecer o eco', async () => {
     const { fetchImpl } = fakeFetch(201, { key: { id: 'BAE5-ABC' } });
     const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });

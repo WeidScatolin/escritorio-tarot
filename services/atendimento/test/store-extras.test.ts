@@ -28,6 +28,38 @@ describe('cobrança: copyPaste e entrega', () => {
   });
 });
 
+describe('conversa: última mensagem do cliente (janela de 24 h)', () => {
+  it('grava e devolve lastInboundAtMs; sem informar, volta null', () => {
+    const store = createStore(':memory:');
+    const conv = { jid: 'a@s.whatsapp.net', mode: 'ai' as const, engagedAt: 1, openChargeId: null, stage: 'greeting' as const };
+
+    store.saveConversation(conv);
+    expect(store.getConversation(conv.jid)!.lastInboundAtMs).toBeNull();
+
+    store.saveConversation({ ...conv, lastInboundAtMs: 1_700_000_123_000 });
+    expect(store.getConversation(conv.jid)!.lastInboundAtMs).toBe(1_700_000_123_000);
+  });
+
+  it('migra banco antigo de conversas sem a coluna nova', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atendimento-'));
+    try {
+      const path = join(dir, 'old-conv.db');
+      const old = new DatabaseSync(path);
+      old.exec(`CREATE TABLE conversations (
+        jid TEXT PRIMARY KEY, mode TEXT NOT NULL, engaged_at INTEGER, open_charge_id TEXT, stage TEXT NOT NULL
+      );
+      INSERT INTO conversations VALUES ('velho@s.whatsapp.net', 'ai', 5, NULL, 'greeting');`);
+      old.close();
+
+      const store = createStore(path);
+      expect(store.getConversation('velho@s.whatsapp.net')).toMatchObject({ engagedAt: 5, lastInboundAtMs: null });
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('avisos ao dono', () => {
   it('grava e lista do mais novo para o mais antigo, respeitando o limite', () => {
     const store = createStore(':memory:');
