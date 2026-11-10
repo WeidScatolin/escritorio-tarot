@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { createRateLimiter, typingDelayMs } from '../src/humanize.js';
+import { createRateLimiter, thinkDelayMs, typingDelayMs } from '../src/humanize.js';
+
+describe('thinkDelayMs (tempo "lendo e pensando" antes de começar a responder)', () => {
+  it('0 segundos desliga a espera', () => {
+    expect(thinkDelayMs(0, () => 0.5)).toBe(0);
+  });
+
+  it('com rng no meio dá exatamente o valor configurado', () => {
+    expect(thinkDelayMs(14, () => 0.5)).toBe(14_000);
+  });
+
+  it('varia de 60% a 140% do configurado (nunca igual toda vez)', () => {
+    expect(thinkDelayMs(10, () => 0)).toBe(6_000);
+    expect(thinkDelayMs(10, () => 0.999999)).toBeLessThanOrEqual(14_000);
+    expect(thinkDelayMs(10, () => 0.999999)).toBeGreaterThan(13_900);
+  });
+});
 
 describe('typingDelayMs', () => {
   const middle = () => 0.5;
@@ -8,9 +24,14 @@ describe('typingDelayMs', () => {
     expect(typingDelayMs('Oi!', middle)).toBeLessThan(typingDelayMs('Oi! Posso te ajudar com uma tiragem de 3 cartas hoje?', middle));
   });
 
-  it('nunca é instantâneo nem passa do teto', () => {
-    expect(typingDelayMs('', middle)).toBeGreaterThanOrEqual(600);
-    expect(typingDelayMs('x'.repeat(5000), middle)).toBeLessThanOrEqual(9000 * 1.2);
+  it('é proporcional ao tamanho: ~1,5 s + perCharMs por caractere (padrão 90 ms)', () => {
+    expect(typingDelayMs('x '.repeat(50), middle)).toBe(1500 + 90 * 100);
+    expect(typingDelayMs('x '.repeat(50), middle, { perCharMs: 50 })).toBe(1500 + 50 * 100);
+  });
+
+  it('nunca é instantâneo nem passa do teto de 20 s', () => {
+    expect(typingDelayMs('', middle)).toBeGreaterThanOrEqual(1200);
+    expect(typingDelayMs('x '.repeat(5000), middle)).toBeLessThanOrEqual(20_000 * 1.2);
   });
 
   it('varia com o rng em até ±20% (nunca fica igual toda vez)', () => {

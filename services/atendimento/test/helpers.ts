@@ -25,6 +25,9 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     dbPath: ':memory:',
     maxMsgsPerMinuteChat: 50,
     maxMsgsPerMinute: 500,
+    // Nos testes a espera inicial fica desligada, salvo nos que a exercitam.
+    replyThinkSeconds: 0,
+    typingMsPerChar: 90,
     ...over,
   };
 }

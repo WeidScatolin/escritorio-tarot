@@ -22,18 +22,31 @@ export type Config = {
   /** Teto de mensagens enviadas por minuto, por conversa e no total (ritmo humano e proteção do número). */
   maxMsgsPerMinuteChat: number;
   maxMsgsPerMinute: number;
+  /** Segundos "lendo e pensando" antes de começar a responder (0 desliga). */
+  replyThinkSeconds: number;
+  /** Milissegundos de "digitação" por caractere da resposta. */
+  typingMsPerChar: number;
 };
 
 const REQUIRED = ['EVOLUTION_URL', 'EVOLUTION_API_KEY', 'WEBHOOK_TOKEN', 'NIM_API_KEY'] as const;
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const positiveInt = z.coerce.number().int().positive();
+const nonNegativeInt = z.coerce.number().int().min(0);
 
 function readPositiveInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
   const parsed = positiveInt.safeParse(raw);
   if (!parsed.success) throw new ConfigError(`${name} inválida: use um número inteiro maior que zero`);
+  return parsed.data;
+}
+
+function readNonNegativeInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = nonNegativeInt.safeParse(raw);
+  if (!parsed.success) throw new ConfigError(`${name} inválida: use um número inteiro (0 ou mais)`);
   return parsed.data;
 }
 
@@ -69,5 +82,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     dbPath: env.DB_PATH?.trim() || './data/atendimento.db',
     maxMsgsPerMinuteChat: readPositiveInt(env, 'MAX_MSGS_PER_MIN_CHAT', 6),
     maxMsgsPerMinute: readPositiveInt(env, 'MAX_MSGS_PER_MIN', 20),
+    replyThinkSeconds: readNonNegativeInt(env, 'REPLY_THINK_SECONDS', 14),
+    typingMsPerChar: readPositiveInt(env, 'TYPING_MS_PER_CHAR', 90),
   };
 }

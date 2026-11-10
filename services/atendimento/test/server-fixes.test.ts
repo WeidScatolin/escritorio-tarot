@@ -149,6 +149,37 @@ describe('ritmo humano nas respostas', () => {
     expect(intro!.delayMs!).toBeGreaterThan(code!.delayMs!);
   });
 
+  it('espera um tempo "pensando" ANTES da primeira mensagem, uma vez só por resposta', async () => {
+    const h = makeHarness({
+      llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })],
+      config: { replyThinkSeconds: 14 },
+    });
+    await leadFirstMessage(h);
+
+    expect(h.sent).toHaveLength(3);
+    expect(h.sleeps).toHaveLength(1);
+    expect(h.sleeps[0]!).toBeGreaterThanOrEqual(8_400);
+    expect(h.sleeps[0]!).toBeLessThanOrEqual(19_600);
+  });
+
+  it('uma resposta normal leva ~15 a 35 s no total (pensar + digitar)', async () => {
+    const h = makeHarness({
+      llm: [agentJson('Olá! Posso te ajudar com uma tiragem de 3 cartas hoje? Me conta o que você quer saber.')],
+      config: { replyThinkSeconds: 14 },
+    });
+    await leadFirstMessage(h);
+
+    const total = h.sleeps.reduce((a, b) => a + b, 0) + (h.sent[0]!.delayMs ?? 0);
+    expect(total).toBeGreaterThanOrEqual(12_000);
+    expect(total).toBeLessThanOrEqual(35_000);
+  });
+
+  it('REPLY_THINK_SECONDS=0: sem espera inicial', async () => {
+    const h = makeHarness({ llm: [agentJson('Olá!')], config: { replyThinkSeconds: 0 } });
+    await leadFirstMessage(h);
+    expect(h.sleeps).toEqual([]);
+  });
+
   it('acima do limite por minuto por conversa, o envio espera em vez de disparar tudo junto', async () => {
     const h = makeHarness({
       llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })],

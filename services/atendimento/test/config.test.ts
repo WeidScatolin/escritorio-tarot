@@ -48,6 +48,29 @@ describe('loadConfig', () => {
     expect(custom.maxMsgsPerMinute).toBe(10);
   });
 
+  it('ritmo das respostas: defaults 14 s pensando e 90 ms por caractere, configuráveis', () => {
+    const defaults = loadConfig(REQUIRED);
+    expect(defaults.replyThinkSeconds).toBe(14);
+    expect(defaults.typingMsPerChar).toBe(90);
+
+    const custom = loadConfig({ ...REQUIRED, REPLY_THINK_SECONDS: '5', TYPING_MS_PER_CHAR: '40' });
+    expect(custom.replyThinkSeconds).toBe(5);
+    expect(custom.typingMsPerChar).toBe(40);
+  });
+
+  it('REPLY_THINK_SECONDS=0 é aceito (desliga a espera inicial)', () => {
+    expect(loadConfig({ ...REQUIRED, REPLY_THINK_SECONDS: '0' }).replyThinkSeconds).toBe(0);
+  });
+
+  it.each([
+    ['REPLY_THINK_SECONDS', '-1'],
+    ['REPLY_THINK_SECONDS', 'abc'],
+    ['TYPING_MS_PER_CHAR', '0'],
+    ['TYPING_MS_PER_CHAR', '1.5'],
+  ])('%s inválido (%s) lança ConfigError', (name, value) => {
+    expect(() => loadConfig({ ...REQUIRED, [name]: value })).toThrow(ConfigError);
+  });
+
   it.each(['0', '-1', 'abc', '1.5'])('limite inválido "%s" lança ConfigError', (value) => {
     expect(() => loadConfig({ ...REQUIRED, MAX_MSGS_PER_MIN: value })).toThrow(ConfigError);
   });

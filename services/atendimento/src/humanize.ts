@@ -1,9 +1,9 @@
 // Ritmo humano nas respostas: atraso de digitação e limite de mensagens por minuto.
 
-const MIN_DELAY_MS = 700;
-const BASE_DELAY_MS = 900;
-const PER_CHAR_MS = 38;
-const MAX_DELAY_MS = 9000;
+const MIN_DELAY_MS = 1500;
+const BASE_DELAY_MS = 1500;
+const DEFAULT_PER_CHAR_MS = 90;
+const MAX_DELAY_MS = 20_000;
 const PASTED_CODE_MIN_LENGTH = 40;
 
 // Código colado (ex.: Pix copia e cola): longo e sem espaços. Ninguém "digita" isso, só cola.
@@ -11,11 +11,25 @@ function looksLikePastedCode(text: string): boolean {
   return text.length >= PASTED_CODE_MIN_LENGTH && !/\s/.test(text);
 }
 
-/** Atraso (ms) antes de enviar `text`, como se uma pessoa estivesse digitando. Varia ±20% com o rng. */
-export function typingDelayMs(text: string, rng: () => number = Math.random): number {
+/**
+ * Atraso (ms) "digitando" antes de enviar `text`: ~1,5 s + perCharMs por caractere (teto de 20 s),
+ * variando ±20% com o rng. Código colado (ex.: Pix copia e cola) sai quase na hora.
+ */
+export function typingDelayMs(
+  text: string,
+  rng: () => number = Math.random,
+  opts: { perCharMs?: number } = {},
+): number {
   if (looksLikePastedCode(text)) return Math.round(700 + 300 * rng());
-  const base = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, BASE_DELAY_MS + PER_CHAR_MS * text.length));
+  const perChar = opts.perCharMs ?? DEFAULT_PER_CHAR_MS;
+  const base = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, BASE_DELAY_MS + perChar * text.length));
   return Math.round(base * (0.8 + 0.4 * rng()));
+}
+
+/** Tempo (ms) "lendo e pensando" antes de começar a responder: 60% a 140% do configurado. 0 = sem espera. */
+export function thinkDelayMs(seconds: number, rng: () => number = Math.random): number {
+  if (seconds <= 0) return 0;
+  return Math.round(seconds * 1000 * (0.6 + 0.8 * rng()));
 }
 
 export type RateLimiterOptions = {

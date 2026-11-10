@@ -38,6 +38,7 @@ No Docker (stack em `infra/`): `docker compose up -d atendimento`. O webhook da 
 ## Configuração (variáveis de ambiente)
 
 Obrigatórias: `EVOLUTION_URL`, `EVOLUTION_API_KEY`, `WEBHOOK_TOKEN`, `NIM_API_KEY`.
+Ritmo das respostas: `REPLY_THINK_SECONDS` (14: tempo "lendo e pensando" antes de começar, 0 desliga) e `TYPING_MS_PER_CHAR` (90: tempo de "digitação" por caractere, teto de 20 s por mensagem). Uma resposta normal leva ~20 a 25 s. Para ficar mais lento ou mais rápido, mude esses dois números em `C:\chatwoot\atendimento.env` e rode `docker compose up -d atendimento`. Limites: `MAX_MSGS_PER_MIN_CHAT` (6) e `MAX_MSGS_PER_MIN` (20).
 Opcionais: `PORT` (3100), `EVOLUTION_INSTANCE` (`tarot`), `NIM_BASE_URL`, `NIM_MODEL` (`google/gemma-4-31b-it`), `TRIGGER_PHRASES` e `BLOCKLIST` (listas separadas por vírgula; a lista de bloqueio é por jid exato), `DB_PATH`.
 
 ## Pendências conhecidas

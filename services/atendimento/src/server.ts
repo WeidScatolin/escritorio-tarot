@@ -6,7 +6,7 @@ import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
 import { parseWebhook } from './evolution/parse.js';
 import { decide } from './filter.js';
-import { createRateLimiter, typingDelayMs } from './humanize.js';
+import { createRateLimiter, thinkDelayMs, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PixProvider } from './pix/provider.js';
@@ -120,10 +120,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     let allSent = true;
     let missingId = false;
     try {
+      // "Lendo e pensando": espera antes de começar (sem aparecer "digitando"), uma vez por resposta.
+      const think = thinkDelayMs(deps.config.replyThinkSeconds);
+      if (think > 0) await (deps.sleep ?? realSleep)(think);
       for (const text of texts) {
         try {
           await limiter.acquire(jid);
-          const { messageId } = await deps.evolution.sendText(jid, text, { delayMs: typingDelayMs(text) });
+          const typing = typingDelayMs(text, Math.random, { perCharMs: deps.config.typingMsPerChar });
+          const { messageId } = await deps.evolution.sendText(jid, text, { delayMs: typing });
           if (messageId) deps.store.markSeen(messageId);
           else missingId = true;
         } catch {
