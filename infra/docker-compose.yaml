@@ -62,8 +62,25 @@ services:
       - evolution_instances:/evolution/instances
     mem_limit: 768m
 
+  atendimento:
+    build: ../services/atendimento
+    container_name: atendimento
+    restart: unless-stopped
+    depends_on: [evolution-api]
+    env_file: atendimento.env
+    environment:
+      - PORT=3100
+      - DB_PATH=/app/data/atendimento.db
+      - EVOLUTION_URL=http://evolution-api:8080
+    volumes:
+      - atendimento_data:/app/data
+    ports:
+      - '127.0.0.1:3100:3100'
+    mem_limit: 256m
+
 volumes:
   storage_data:
   postgres_data:
   redis_data:
   evolution_instances:
+  atendimento_data:

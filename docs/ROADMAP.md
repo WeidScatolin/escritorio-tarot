@@ -27,12 +27,14 @@ Tráfego pago (anúncios da Meta que abrem conversa no WhatsApp, nicho tarot) �
 
 ## Próximos passos (atendimento)
 
-- [ ] Esqueleto do serviço + testes (webhook de entrada do Evolution/Chatwoot).
-- [ ] Filtro de anúncio + lista de bloqueio (validar a marca do anúncio com um QR escaneado de verdade).
-- [ ] Adaptador de LLM (NIM) com timeout, tratamento de 422 e plano B.
-- [ ] Adaptador de Pix com provedor falso; tabela de preços fixa; confirmação só via provedor.
+- [x] Esqueleto do serviço + testes (webhook de entrada da Evolution). Em `services/atendimento/`.
+- [x] Filtro de anúncio + lista de bloqueio. **Falta validar a marca do anúncio com um QR escaneado de verdade.**
+- [x] Adaptador de LLM (NIM) com timeout e tratamento de 422 e de modelo indisponível. Falta um plano B (segundo modelo/provedor).
+- [x] Adaptador de Pix com provedor falso; tabela de preços fixa (provisória); confirmação só via provedor.
+- [x] Container no Docker e webhook registrado na instância `tarot`.
 - [ ] Prompt e escopo da IA (ver "Em aberto").
 - [ ] Endereço público só para o webhook do Pix (túnel ou função na Vercel).
+- [ ] Capturar um payload real de anúncio e atualizar o parser e as fixtures.
 
 ## Em aberto (depende do dono)
 
