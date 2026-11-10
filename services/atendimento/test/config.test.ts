@@ -58,6 +58,48 @@ describe('loadConfig', () => {
     expect(custom.typingMsPerChar).toBe(40);
   });
 
+  it('gasto em anúncios (Meta): desligado por padrão; ligado com conta, token e data de início', () => {
+    const off = loadConfig(REQUIRED);
+    expect(off.meta).toBeNull();
+    expect(off.adSpendPollMinutes).toBe(10);
+
+    const on = loadConfig({ ...REQUIRED, META_AD_ACCOUNT_ID: 'act_123', META_ACCESS_TOKEN: 'tk', META_SPEND_SINCE: '2026-11-01' });
+    expect(on.meta).toEqual({ adAccountId: '123', accessToken: 'tk', apiVersion: 'v25.0', spendSince: '2026-11-01' });
+
+    const custom = loadConfig({
+      ...REQUIRED,
+      META_AD_ACCOUNT_ID: '456',
+      META_ACCESS_TOKEN: 'tk',
+      META_SPEND_SINCE: '2026-11-01',
+      META_API_VERSION: 'v26.0',
+      AD_SPEND_POLL_MINUTES: '30',
+    });
+    expect(custom.meta!.apiVersion).toBe('v26.0');
+    expect(custom.meta!.adAccountId).toBe('456');
+    expect(custom.adSpendPollMinutes).toBe(30);
+  });
+
+  it.each([
+    ['sem token', { META_AD_ACCOUNT_ID: '1', META_SPEND_SINCE: '2026-11-01' }, /META_ACCESS_TOKEN/],
+    ['sem conta', { META_ACCESS_TOKEN: 'tk', META_SPEND_SINCE: '2026-11-01' }, /META_AD_ACCOUNT_ID/],
+    ['sem data de início', { META_AD_ACCOUNT_ID: '1', META_ACCESS_TOKEN: 'tk' }, /META_SPEND_SINCE/],
+    ['data inválida', { META_AD_ACCOUNT_ID: '1', META_ACCESS_TOKEN: 'tk', META_SPEND_SINCE: '01/11/2026' }, /META_SPEND_SINCE/],
+    ['conta não numérica', { META_AD_ACCOUNT_ID: 'abc', META_ACCESS_TOKEN: 'tk', META_SPEND_SINCE: '2026-11-01' }, /META_AD_ACCOUNT_ID/],
+  ])('Meta parcialmente configurada (%s) lança ConfigError', (_name, extra, pattern) => {
+    expect(() => loadConfig({ ...REQUIRED, ...extra })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...REQUIRED, ...extra })).toThrow(pattern);
+  });
+
+  it('o token da Meta nunca aparece na mensagem do erro', () => {
+    let message = '';
+    try {
+      loadConfig({ ...REQUIRED, META_ACCESS_TOKEN: 'EAAB-segredo-xyz' });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).not.toContain('EAAB-segredo-xyz');
+  });
+
   it('REPLY_THINK_SECONDS=0 é aceito (desliga a espera inicial)', () => {
     expect(loadConfig({ ...REQUIRED, REPLY_THINK_SECONDS: '0' }).replyThinkSeconds).toBe(0);
   });

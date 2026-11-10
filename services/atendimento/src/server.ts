@@ -11,7 +11,7 @@ import { createRateLimiter, thinkDelayMs, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PixProvider } from './pix/provider.js';
-import type { Store } from './store.js';
+import type { AdSpendRecord, Store } from './store.js';
 import type { InboundMessage } from './types.js';
 
 declare module 'fastify' {
@@ -59,6 +59,21 @@ function startOfDayBrt(nowMs: number): number {
   return Math.floor((nowMs - BRT_OFFSET_MS) / DAY_MS) * DAY_MS + BRT_OFFSET_MS;
 }
 const PANEL_NOTICES = 5;
+const AD_SPEND_FRESH_MS = 60 * 60_000;
+
+type AdSpendStatus = 'disabled' | 'ok' | 'stale' | 'error';
+
+// Estado do gasto em anúncios para o painel: nunca mostra dado velho como se fosse atual.
+function adSpendView(record: AdSpendRecord | null, metaEnabled: boolean, nowMs: number) {
+  const empty = { totalCents: null, todayCents: null, currency: null, fetchedAtMs: null, errorKind: null };
+  if (!record) return { status: (metaEnabled ? 'stale' : 'disabled') as AdSpendStatus, ...empty };
+  const status: AdSpendStatus = record.errorKind
+    ? 'error'
+    : record.fetchedAtMs === null || nowMs - record.fetchedAtMs > AD_SPEND_FRESH_MS
+      ? 'stale'
+      : 'ok';
+  return { status, ...record };
+}
 const PANEL_FILE = new URL('../public/painel.html', import.meta.url);
 
 const pixBodySchema = z.object({ chargeId: z.string().min(1) });
@@ -232,11 +247,17 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       return reply.code(404).send({ error: 'not found' });
     }
     const now = deps.now();
+    const counts = deps.store.getStats(now, startOfDayBrt(now));
+    const spend = adSpendView(deps.store.getAdSpend(), deps.config.meta !== null, now);
+    // Lucro só quando o gasto está fresco e na mesma moeda (BRL): nunca mistura moedas nem usa dado velho.
+    const profitable = spend.status === 'ok' && spend.currency === 'BRL' && spend.totalCents !== null && spend.todayCents !== null;
     return {
       generatedAtMs: now,
-      ...deps.store.getStats(now, startOfDayBrt(now)),
-      // Gasto em anúncios: sem dados até o gestor de anúncios (Claude Ads) existir.
-      spend: { totalCents: null, todayCents: null },
+      ...counts,
+      spend,
+      profit: profitable
+        ? { totalCents: counts.revenue.totalCents - spend.totalCents!, todayCents: counts.revenue.todayCents - spend.todayCents! }
+        : { totalCents: null, todayCents: null },
       activity: { processing },
       notices: deps.store.recentNotices(PANEL_NOTICES).map((n) => ({ atMs: n.atMs, text: n.text })),
     };

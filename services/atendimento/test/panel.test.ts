@@ -10,7 +10,15 @@ type StatsBody = {
   chats: { total: number; active24h: number; human: number; awaitingPayment: number };
   charges: { pending: number; paid: number };
   revenue: { totalCents: number; todayCents: number };
-  spend: { totalCents: number | null; todayCents: number | null };
+  spend: {
+    status: 'disabled' | 'ok' | 'stale' | 'error';
+    totalCents: number | null;
+    todayCents: number | null;
+    currency: string | null;
+    fetchedAtMs: number | null;
+    errorKind: string | null;
+  };
+  profit: { totalCents: number | null; todayCents: number | null };
   activity: { processing: number };
   notices: { atMs: number; text: string }[];
 };
@@ -35,7 +43,8 @@ describe('GET /api/stats/:token', () => {
     expect(body.chats).toEqual({ total: 0, active24h: 0, human: 0, awaitingPayment: 0 });
     expect(body.charges).toEqual({ pending: 0, paid: 0 });
     expect(body.revenue).toEqual({ totalCents: 0, todayCents: 0 });
-    expect(body.spend).toEqual({ totalCents: null, todayCents: null });
+    expect(body.spend).toEqual({ status: 'disabled', totalCents: null, todayCents: null, currency: null, fetchedAtMs: null, errorKind: null });
+    expect(body.profit).toEqual({ totalCents: null, todayCents: null });
     expect(body.activity.processing).toBe(0);
     expect(body.notices).toEqual([]);
   });
@@ -114,6 +123,95 @@ describe('GET /api/stats/:token', () => {
     const app = buildServer(makeHarness().deps);
     const response = await app.inject({ method: 'GET', url: '/api/stats/errado' });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('gasto em anúncios e lucro no painel', () => {
+  const MIN = 60_000;
+  const record = (over: object = {}) => ({
+    totalCents: 10_000,
+    todayCents: 2_000,
+    currency: 'BRL',
+    fetchedAtMs: T0 - 5 * MIN,
+    errorKind: null,
+    ...over,
+  });
+
+  async function withRevenue(h: Harness) {
+    // R$ 29,00 de faturamento (hoje e total), pagando uma cobrança de verdade.
+    const app = buildServer(h.deps);
+    await app.inject({ method: 'POST', url: EVO, payload: upsert({ id: 'm1', text: 'Vi o anúncio', ad: true }) });
+    await app.settled();
+    const chargeId = h.store.getConversation(JID)!.openChargeId!;
+    h.pix.simulatePayment(chargeId);
+    await app.inject({ method: 'POST', url: PIX, payload: { chargeId } });
+    await app.settled();
+    return app;
+  }
+  const script = [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Leitura.')];
+
+  it('dado recente: status ok com valores e lucro = faturamento - gasto (em BRL)', async () => {
+    const h = makeHarness({ llm: script });
+    const app = await withRevenue(h);
+    h.store.saveAdSpend(record({ totalCents: 1_000, todayCents: 500 }));
+
+    const body = await stats(app);
+
+    expect(body.spend).toMatchObject({ status: 'ok', totalCents: 1_000, todayCents: 500, currency: 'BRL' });
+    expect(body.profit).toEqual({ totalCents: 2_900 - 1_000, todayCents: 2_900 - 500 });
+  });
+
+  it('lucro pode ser negativo (gastou mais do que faturou)', async () => {
+    const h = makeHarness();
+    const app = buildServer(h.deps);
+    h.store.saveAdSpend(record({ totalCents: 5_000, todayCents: 5_000 }));
+
+    const body = await stats(app);
+
+    expect(body.profit).toEqual({ totalCents: -5_000, todayCents: -5_000 });
+  });
+
+  it('dado com mais de 1 hora: status stale, mantém os valores mas NÃO calcula lucro', async () => {
+    const h = makeHarness();
+    const app = buildServer(h.deps);
+    h.store.saveAdSpend(record({ fetchedAtMs: T0 - 2 * 60 * MIN }));
+
+    const body = await stats(app);
+
+    expect(body.spend).toMatchObject({ status: 'stale', totalCents: 10_000 });
+    expect(body.profit).toEqual({ totalCents: null, todayCents: null });
+  });
+
+  it('última consulta com erro: status error com o tipo do erro, sem lucro', async () => {
+    const h = makeHarness();
+    const app = buildServer(h.deps);
+    h.store.saveAdSpend(record({ errorKind: 'auth' }));
+
+    const body = await stats(app);
+
+    expect(body.spend).toMatchObject({ status: 'error', errorKind: 'auth' });
+    expect(body.profit).toEqual({ totalCents: null, todayCents: null });
+  });
+
+  it('moeda diferente de BRL: mostra o gasto na moeda da conta, mas não mistura no lucro', async () => {
+    const h = makeHarness();
+    const app = buildServer(h.deps);
+    h.store.saveAdSpend(record({ currency: 'USD' }));
+
+    const body = await stats(app);
+
+    expect(body.spend).toMatchObject({ status: 'ok', currency: 'USD', totalCents: 10_000 });
+    expect(body.profit).toEqual({ totalCents: null, todayCents: null });
+  });
+
+  it('erro logo na primeira consulta (nunca teve valor): error com valores nulos', async () => {
+    const h = makeHarness();
+    const app = buildServer(h.deps);
+    h.store.saveAdSpend(record({ totalCents: null, todayCents: null, currency: null, fetchedAtMs: null, errorKind: 'network' }));
+
+    const body = await stats(app);
+
+    expect(body.spend).toMatchObject({ status: 'error', totalCents: null, errorKind: 'network' });
   });
 });
 

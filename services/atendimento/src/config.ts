@@ -26,7 +26,13 @@ export type Config = {
   replyThinkSeconds: number;
   /** Milissegundos de "digitação" por caractere da resposta. */
   typingMsPerChar: number;
+  /** Leitura do gasto em anúncios pela Meta (somente leitura). null = desligado. */
+  meta: MetaConfig | null;
+  /** De quantos em quantos minutos o gasto é atualizado. */
+  adSpendPollMinutes: number;
 };
+
+export type MetaConfig = { adAccountId: string; accessToken: string; apiVersion: string; spendSince: string };
 
 const REQUIRED = ['EVOLUTION_URL', 'EVOLUTION_API_KEY', 'WEBHOOK_TOKEN', 'NIM_API_KEY'] as const;
 
@@ -57,6 +63,30 @@ function csv(value: string | undefined): string[] {
     .filter((item) => item.length > 0);
 }
 
+// Tudo ou nada: ligar a Meta exige conta, token e data de início. As mensagens de erro nunca citam o token.
+function readMeta(env: Record<string, string | undefined>): MetaConfig | null {
+  const account = env.META_AD_ACCOUNT_ID?.trim() ?? '';
+  const token = env.META_ACCESS_TOKEN?.trim() ?? '';
+  const since = env.META_SPEND_SINCE?.trim() ?? '';
+  if (!account && !token && !since) return null;
+
+  const missing = [
+    ['META_AD_ACCOUNT_ID', account],
+    ['META_ACCESS_TOKEN', token],
+    ['META_SPEND_SINCE', since],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missing.length > 0) throw new ConfigError(`Meta parcialmente configurada: faltam ${missing.join(', ')}`);
+
+  const accountId = account.replace(/^act_/i, '');
+  if (!/^\d+$/.test(accountId)) throw new ConfigError('META_AD_ACCOUNT_ID inválida: use só os números da conta (com ou sem "act_")');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new ConfigError('META_SPEND_SINCE inválida: use o formato AAAA-MM-DD');
+  const apiVersion = env.META_API_VERSION?.trim() || 'v25.0';
+  if (!/^v\d+\.\d+$/.test(apiVersion)) throw new ConfigError('META_API_VERSION inválida: use algo como v25.0');
+  return { adAccountId: accountId, accessToken: token, apiVersion, spendSince: since };
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const missing = REQUIRED.filter((name) => !env[name]?.trim());
   if (missing.length > 0) {
@@ -84,5 +114,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     maxMsgsPerMinute: readPositiveInt(env, 'MAX_MSGS_PER_MIN', 20),
     replyThinkSeconds: readNonNegativeInt(env, 'REPLY_THINK_SECONDS', 14),
     typingMsPerChar: readPositiveInt(env, 'TYPING_MS_PER_CHAR', 90),
+    meta: readMeta(env),
+    adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
   };
 }

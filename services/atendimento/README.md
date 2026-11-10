@@ -28,7 +28,7 @@ Abra no navegador do PC: `http://localhost:3100/painel/<WEBHOOK_TOKEN>` (o token
 
 - **Tudo é real:** conversas das últimas 24 h, Pix pendentes/pagos, faturamento (total e de hoje, no horário de Brasília) e os avisos ao dono, lidos do banco por `GET /api/stats/<token>` a cada 3 s.
 - **Os bonecos refletem o serviço:** a Taróloga só "digita" enquanto há uma resposta sendo preparada, o Cobrança aguarda Pix quando há cobrança pendente, e o estagiário só anda quando há mensagem ou pagamento sendo processado. Moedas caem no cofre quando um Pix é confirmado.
-- **Gasto em anúncios e lucro:** aparecem como "—" (sem dados) até o gestor de anúncios (Claude Ads) ser ligado. O lucro líquido é faturamento menos esse gasto.
+- **Gasto em anúncios e lucro:** vêm da API da Meta (ver variáveis `META_*`). Sem elas, aparecem como "—" e a tela diz que a leitura está desligada. O lucro líquido é faturamento menos esse gasto, só quando o gasto está fresco e em BRL.
 - Com o Pix falso de hoje o faturamento fica em zero.
 
 ## Rodar
@@ -47,6 +47,7 @@ No Docker (stack em `infra/`): `docker compose up -d atendimento`. O webhook da 
 ## Configuração (variáveis de ambiente)
 
 Obrigatórias: `EVOLUTION_URL`, `EVOLUTION_API_KEY`, `WEBHOOK_TOKEN`, `NIM_API_KEY`.
+Gasto em anúncios (Meta, **somente leitura**, desligado por padrão): `META_AD_ACCOUNT_ID` (só os números da conta, com ou sem `act_`), `META_ACCESS_TOKEN` (token com permissão `ads_read`), `META_SPEND_SINCE` (primeiro dia da campanha, `AAAA-MM-DD`: o total é desde essa data), `META_API_VERSION` (`v25.0`; confirme a versão atual no changelog da Meta) e `AD_SPEND_POLL_MINUTES` (10). Os três primeiros são tudo-ou-nada. O gasto fica no painel como "desatualizado" depois de 1 h sem leitura e como "erro" se a Meta recusar o token; nesses casos o lucro líquido não é calculado. Se a conta estiver em outra moeda que não BRL, o gasto aparece na moeda dela e o lucro fica em branco (não mistura moedas). Se o token vencer, o dono é avisado uma vez.
 Ritmo das respostas: `REPLY_THINK_SECONDS` (14: tempo "lendo e pensando" antes de começar, 0 desliga) e `TYPING_MS_PER_CHAR` (90: tempo de "digitação" por caractere, teto de 20 s por mensagem). Uma resposta normal leva ~20 a 25 s. Para ficar mais lento ou mais rápido, mude esses dois números em `C:\chatwoot\atendimento.env` e rode `docker compose up -d atendimento`. Limites: `MAX_MSGS_PER_MIN_CHAT` (6) e `MAX_MSGS_PER_MIN` (20).
 Opcionais: `PORT` (3100), `EVOLUTION_INSTANCE` (`tarot`), `NIM_BASE_URL`, `NIM_MODEL` (`google/gemma-4-31b-it`), `TRIGGER_PHRASES` e `BLOCKLIST` (listas separadas por vírgula; a lista de bloqueio é por jid exato), `DB_PATH`.
 

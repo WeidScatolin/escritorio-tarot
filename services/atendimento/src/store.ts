@@ -27,6 +27,15 @@ export type Charge = {
   paidAtMs?: number | null;
 };
 
+/** Último gasto em anúncios lido da Meta (um único registro). */
+export type AdSpendRecord = {
+  totalCents: number | null;
+  todayCents: number | null;
+  currency: string | null;
+  fetchedAtMs: number | null;
+  errorKind: string | null;
+};
+
 /** Números agregados para o painel. */
 export type StoreStats = {
   chats: { total: number; active24h: number; human: number; awaitingPayment: number };
@@ -49,6 +58,8 @@ export type Store = {
   addNotice(text: string, atMs: number): void;
   /** Avisos ao dono, do mais novo para o mais antigo. */
   recentNotices(limit: number): Notice[];
+  getAdSpend(): AdSpendRecord | null;
+  saveAdSpend(record: AdSpendRecord): void;
   /** Contagens e faturamento para o painel. `dayStartMs` é o começo de "hoje". */
   getStats(nowMs: number, dayStartMs: number): StoreStats;
   /** Fecha o banco (desligamento do serviço; também libera o arquivo no Windows). */
@@ -84,6 +95,14 @@ CREATE TABLE IF NOT EXISTS charges (
   copy_paste TEXT,
   delivered INTEGER NOT NULL DEFAULT 0,
   paid_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS ad_spend (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  total_cents INTEGER,
+  today_cents INTEGER,
+  currency TEXT,
+  fetched_at INTEGER,
+  error_kind TEXT
 );
 CREATE TABLE IF NOT EXISTS notices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,6 +198,19 @@ export function createStore(dbPath: string): Store {
             COALESCE(SUM(CASE WHEN status = 'paid' AND paid_at >= ? THEN amount_cents ELSE 0 END), 0) AS today
        FROM charges`,
   );
+  const selectAdSpend = db.prepare(
+    'SELECT total_cents, today_cents, currency, fetched_at, error_kind FROM ad_spend WHERE id = 1',
+  );
+  const upsertAdSpend = db.prepare(
+    `INSERT INTO ad_spend (id, total_cents, today_cents, currency, fetched_at, error_kind)
+     VALUES (1, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       total_cents = excluded.total_cents,
+       today_cents = excluded.today_cents,
+       currency = excluded.currency,
+       fetched_at = excluded.fetched_at,
+       error_kind = excluded.error_kind`,
+  );
   const insertNotice = db.prepare('INSERT INTO notices (at_ms, text) VALUES (?, ?)');
   const selectNotices = db.prepare('SELECT id, at_ms, text FROM notices ORDER BY id DESC LIMIT ?');
 
@@ -241,6 +273,24 @@ export function createStore(dbPath: string): Store {
         delivered: row.delivered === 1,
         paidAtMs: row.paid_at,
       };
+    },
+
+    getAdSpend() {
+      const row = selectAdSpend.get() as
+        | { total_cents: number | null; today_cents: number | null; currency: string | null; fetched_at: number | null; error_kind: string | null }
+        | undefined;
+      if (!row) return null;
+      return {
+        totalCents: row.total_cents,
+        todayCents: row.today_cents,
+        currency: row.currency,
+        fetchedAtMs: row.fetched_at,
+        errorKind: row.error_kind,
+      };
+    },
+
+    saveAdSpend(r) {
+      upsertAdSpend.run(r.totalCents, r.todayCents, r.currency, r.fetchedAtMs, r.errorKind);
     },
 
     getStats(nowMs, dayStartMs) {

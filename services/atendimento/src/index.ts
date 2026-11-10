@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createMetaAdSpend } from './ads/meta.js';
+import { startAdSpendPolling } from './ads/tracker.js';
 import { ConfigError, loadConfig } from './config.js';
 import { createEvolutionClient } from './evolution/client.js';
 import { createNimClient } from './llm/nim.js';
@@ -38,7 +40,33 @@ try {
     notifyOwner: (text) => console.warn(`[AVISO AO DONO] ${text}`),
   });
 
+  // Gasto em anúncios (Meta, somente leitura): só liga se conta, token e data estiverem configurados.
+  let stopAdSpend: () => void = () => undefined;
+  if (config.meta) {
+    stopAdSpend = startAdSpendPolling(
+      {
+        provider: createMetaAdSpend({
+          adAccountId: config.meta.adAccountId,
+          accessToken: config.meta.accessToken,
+          apiVersion: config.meta.apiVersion,
+        }),
+        store,
+        now: Date.now,
+        sinceDate: config.meta.spendSince,
+        notify: (text) => {
+          store.addNotice(text, Date.now());
+          console.warn(`[AVISO AO DONO] ${text}`);
+        },
+      },
+      config.adSpendPollMinutes * 60_000,
+    );
+    console.log('Leitura do gasto em anúncios (Meta) ligada.');
+  } else {
+    console.log('Gasto em anúncios desligado (META_* não configurado): o painel mostra "—".');
+  }
+
   const stop = async () => {
+    stopAdSpend();
     await app.settled();
     await app.close();
     store.close();

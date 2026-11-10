@@ -84,17 +84,31 @@ const floaters = [], coins = [];
 const fmtCents = c => c == null ? '—' : 'R$ ' + (c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const $ = id => document.getElementById(id);
 
-function profitCents(){
-  if(!stats || stats.spend.totalCents == null) return null;
-  return stats.revenue.totalCents - stats.spend.totalCents;
+const fmtMoney = (c, cur) => c == null ? '—' : ((cur && cur !== 'BRL') ? cur + ' ' : 'R$ ') + (c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function profitCents(){ return stats ? stats.profit.totalCents : null; }
+// Gasto em anúncios (Meta): mostra o estado real; dado velho ou com erro é sinalizado, nunca escondido.
+function spendText(){
+  if(!stats) return '—';
+  const s = stats.spend;
+  if(s.status === 'disabled') return '— (desligado)';
+  const v = fmtMoney(s.totalCents, s.currency);
+  if(s.status === 'error') return v + ' ⚠ erro';
+  if(s.status === 'stale') return v + ' (antigo)';
+  return v;
+}
+function spendShort(){ return stats && stats.spend.status === 'ok' ? fmtMoney(stats.spend.totalCents, stats.spend.currency) : '—'; }
+function profitText(){
+  const p = profitCents();
+  if(p != null) return fmtCents(p);
+  if(stats && stats.spend.status === 'ok' && stats.spend.currency !== 'BRL') return '— (moeda ' + stats.spend.currency + ')';
+  return '— (sem gasto)';
 }
 function render(){
   if(!stats) return;
-  $('spend').textContent = fmtCents(stats.spend.totalCents);
+  $('spend').textContent = spendText();
   $('revToday').textContent = fmtCents(stats.revenue.todayCents);
   $('revTotal').textContent = fmtCents(stats.revenue.totalCents);
-  const p = profitCents();
-  $('profit').textContent = p == null ? '— (sem gasto)' : fmtCents(p);
+  $('profit').textContent = profitText();
   $('chats').textContent = stats.chats.active24h;
   const ul = $('notices'); ul.textContent = '';
   if(stats.notices.length === 0){
@@ -120,7 +134,14 @@ async function poll(){
     if(prevPaid !== null && s.charges.paid > prevPaid) celebratePayment(s.revenue.totalCents - (stats ? stats.revenue.totalCents : 0));
     prevPaid = s.charges.paid; stats = s; lastOkAt = Date.now();
     render();
-    setStatus('Dados reais do serviço · atualizado às ' + new Date().toLocaleTimeString('pt-BR') + ' · o gasto em anúncios entra quando o gestor de anúncios for ligado.', false);
+    const adsNote = s.spend.status === 'disabled'
+      ? 'o gasto em anúncios aparece quando a leitura da Meta for ligada.'
+      : s.spend.status === 'error'
+        ? 'não consegui ler o gasto da Meta (' + s.spend.errorKind + ').'
+        : s.spend.status === 'stale'
+          ? 'o gasto da Meta está desatualizado.'
+          : 'gasto lido da Meta às ' + new Date(s.spend.fetchedAtMs).toLocaleTimeString('pt-BR') + '.';
+    setStatus('Dados reais do serviço · atualizado às ' + new Date().toLocaleTimeString('pt-BR') + ' · ' + adsNote, s.spend.status === 'error');
   }catch(e){
     setStatus('Sem conexão com o serviço de atendimento (' + (e && e.message ? e.message : 'erro') + '). Tentando de novo…', true);
   }
@@ -146,6 +167,10 @@ function agentState(idx){
     if(stats.charges.pending>0) return {text:'Aguardando Pix ('+stats.charges.pending+')', working:true};
     return {text:stats.charges.paid>0?'Tudo pago':'Sem cobranças', working:false};
   }
+  const s = stats.spend;
+  if(s.status === 'ok') return {text:'Gasto hoje '+fmtMoney(s.todayCents, s.currency), working:true};
+  if(s.status === 'error') return {text:'Erro ao ler a Meta', working:false};
+  if(s.status === 'stale') return {text:'Dados antigos', working:false};
   return {text:'Sem dados de anúncios', working:false};
 }
 ST.forEach(s=>{ s.cx = s.dx + 31; s.cy = 100; });
@@ -187,7 +212,7 @@ function drawWall(t){
   const prof=profitCents();
   const rows=[
     ['FATURAMENTO',stats?fmtCents(stats.revenue.totalCents):'—','#7bed9f'],
-    ['GASTO EM ADS',stats?fmtCents(stats.spend.totalCents):'—','#ff8a80'],
+    ['GASTO EM ADS',spendShort(),'#ff8a80'],
     ['LUCRO LÍQUIDO',prof==null?'—':fmtCents(prof),prof==null?'#9fb3c8':(prof>=0?'#ffd54f':'#ff5252')]
   ];
   rows.forEach(([lb,v,c],i)=>{

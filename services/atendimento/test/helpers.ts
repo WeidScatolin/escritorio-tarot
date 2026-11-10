@@ -28,6 +28,8 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     // Nos testes a espera inicial fica desligada, salvo nos que a exercitam.
     replyThinkSeconds: 0,
     typingMsPerChar: 90,
+    meta: null,
+    adSpendPollMinutes: 10,
     ...over,
   };
 }
