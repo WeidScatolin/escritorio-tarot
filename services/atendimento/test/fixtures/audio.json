@@ -1,0 +1,10 @@
+{
+  "event": "messages.upsert",
+  "instance": "tarot",
+  "data": {
+    "key": { "remoteJid": "5511999990000@s.whatsapp.net", "fromMe": false, "id": "ABC-audio" },
+    "pushName": "Maria",
+    "messageTimestamp": 1760000000,
+    "message": { "audioMessage": { "mimetype": "audio/ogg; codecs=opus", "seconds": 5 } }
+  }
+}

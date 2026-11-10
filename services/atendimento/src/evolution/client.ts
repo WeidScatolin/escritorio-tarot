@@ -1,0 +1,44 @@
+export type EvolutionClient = {
+  /** Devolve o id da mensagem enviada (para reconhecer o eco no webhook), ou null se a resposta não trouxer. */
+  sendText(jid: string, text: string): Promise<{ messageId: string | null }>;
+};
+
+export type EvolutionClientOptions = {
+  baseUrl: string;
+  apiKey: string;
+  instance: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+};
+
+// Mensagens de erro nunca incluem a apikey, nem a causa original (que pode carregá-la).
+export function createEvolutionClient(opts: EvolutionClientOptions): EvolutionClient {
+  const base = opts.baseUrl.replace(/\/+$/, '');
+  const doFetch = opts.fetchImpl ?? fetch;
+  const url = `${base}/message/sendText/${encodeURIComponent(opts.instance)}`;
+
+  return {
+    async sendText(jid, text) {
+      let response: Response;
+      try {
+        response = await doFetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', apikey: opts.apiKey },
+          body: JSON.stringify({ number: jid, text }),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
+        });
+      } catch {
+        throw new Error('Evolution API: falha de rede ao enviar mensagem');
+      }
+      if (!response.ok) {
+        throw new Error(`Evolution API respondeu ${response.status} ao enviar mensagem`);
+      }
+      try {
+        const body = (await response.json()) as { key?: { id?: unknown } };
+        return { messageId: typeof body.key?.id === 'string' && body.key.id ? body.key.id : null };
+      } catch {
+        return { messageId: null };
+      }
+    },
+  };
+}

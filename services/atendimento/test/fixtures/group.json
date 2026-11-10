@@ -1,0 +1,10 @@
+{
+  "event": "messages.upsert",
+  "instance": "tarot",
+  "data": {
+    "key": { "remoteJid": "120363000000000000@g.us", "fromMe": false, "id": "ABC-group" },
+    "pushName": "Maria",
+    "messageTimestamp": 1760000000,
+    "message": { "conversation": "oi grupo" }
+  }
+}
