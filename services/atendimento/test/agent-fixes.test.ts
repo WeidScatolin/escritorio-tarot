@@ -115,6 +115,41 @@ describe('F5: a IA não pode revelar cartas, links nem dizer que o pagamento foi
   });
 });
 
+describe('identidade: não se anuncia como virtual, mas nunca finge ser humana', () => {
+  it('o prompt não manda se apresentar como virtual e exige a verdade se perguntarem', async () => {
+    const llm = fakeLlm([json('Oi!')]);
+    await handleLead(deps(llm.client), inbound('oi'));
+
+    const system = llm.calls[0]!.system;
+    expect(system).not.toMatch(/virtual/i);
+    expect(system).toMatch(/nunca diga que é (uma )?(pessoa|humana)/i);
+    expect(system).toMatch(/pergunt/i);
+    expect(system).toMatch(/inteligência artificial/i);
+  });
+
+  it.each([
+    'Sou uma pessoa de verdade, pode confiar!',
+    'Sou humana, não um robô.',
+    'Não sou um robô, sou a Mística.',
+    'Não sou uma IA, pode ficar tranquila.',
+    'Não sou inteligência artificial.',
+  ])('barra resposta que finge ser humana: "%s"', async (reply) => {
+    const llm = fakeLlm([json(reply)]);
+    const result = await handleLead(deps(llm.client), inbound('você é um robô?'));
+
+    expect(result.replies.join(' ')).not.toContain(reply);
+    expect(result.notifyOwner).toBeDefined();
+  });
+
+  it('resposta honesta sobre ser uma assistente de IA passa', async () => {
+    const llm = fakeLlm([json('Sou uma assistente de inteligência artificial, mas posso te ajudar com a sua leitura. 🔮')]);
+    const result = await handleLead(deps(llm.client), inbound('você é um robô?'));
+
+    expect(result.replies.join(' ')).toContain('assistente de inteligência artificial');
+    expect(result.notifyOwner).toBeUndefined();
+  });
+});
+
 describe('F6: guarda de valores', () => {
   it.each(['R$ 29.99', 'R$ 29.9', 'R$ 1.50', 'BRL 1', '1,00', 'por 5,50'])('barra "%s" com só 2900 permitido', (text) => {
     expect(guardReply(text, [2900])).toBe(false);
