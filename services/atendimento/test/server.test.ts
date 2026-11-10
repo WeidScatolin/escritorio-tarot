@@ -127,9 +127,16 @@ describe('takeover do dono', () => {
     expect(h.llmCalls.length).toBe(callsBefore);
   });
 
-  it('eco da própria resposta do bot (fromMe logo após enviar) NÃO desliga a IA', async () => {
+  it('eco da própria resposta do bot (fromMe com o id que o bot enviou) NÃO desliga a IA', async () => {
     const h = makeHarness();
-    await leadThenOwner(h, 'Oi!', 500);
+    const app = await sendMessages(h, upsert({ id: 'm1', text: 'Vi o anúncio', ad: true }));
+    h.clock.t += 500;
+    await app.inject({
+      method: 'POST',
+      url: EVO,
+      payload: upsert({ id: h.sent[0]!.messageId!, text: 'Oi!', fromMe: true }),
+    });
+    await app.settled();
     expect(h.store.getConversation(JID)!.mode).toBe('ai');
   });
 

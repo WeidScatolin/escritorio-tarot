@@ -26,6 +26,18 @@ describe('createEvolutionClient.sendText', () => {
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ number: '5511999990000@s.whatsapp.net', text: 'Olá!' });
   });
 
+  it('devolve o id da mensagem enviada (key.id) para o servidor reconhecer o eco', async () => {
+    const { fetchImpl } = fakeFetch(201, { key: { id: 'BAE5-ABC' } });
+    const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });
+    expect(await client.sendText('a@s.whatsapp.net', 'x')).toEqual({ messageId: 'BAE5-ABC' });
+  });
+
+  it('sem id na resposta: messageId null (não quebra)', async () => {
+    const { fetchImpl } = fakeFetch(201, { status: 'PENDING' });
+    const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });
+    expect(await client.sendText('a@s.whatsapp.net', 'x')).toEqual({ messageId: null });
+  });
+
   it('resposta não 2xx lança erro sem vazar a apikey', async () => {
     const { fetchImpl } = fakeFetch(401, { error: `apikey ${API_KEY} inválida` });
     const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });

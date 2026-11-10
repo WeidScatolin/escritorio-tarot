@@ -8,6 +8,7 @@ import { createStore } from '../src/store.js';
 export const TOKEN = 'tok-test';
 export const API_KEY = 'evo-secret-key-123';
 export const JID = '5511999990000@s.whatsapp.net';
+export const T0 = 1_700_000_000_000;
 
 export function makeConfig(over: Partial<Config> = {}): Config {
   return {
@@ -32,12 +33,16 @@ export const agentJson = (reply: string, action: unknown = { kind: 'none' }): Ll
 
 export type Harness = ReturnType<typeof makeHarness>;
 
-export function makeHarness(opts: { llm?: LlmResult[]; config?: Partial<Config>; sendFails?: boolean } = {}) {
-  const sent: { jid: string; text: string }[] = [];
+export function makeHarness(
+  opts: { llm?: LlmResult[]; config?: Partial<Config>; sendFails?: boolean; sendReturnsNoId?: boolean } = {},
+) {
+  const sent: { jid: string; text: string; messageId: string | null }[] = [];
   const notices: string[] = [];
   const llmCalls: { system: string; messages: { role: string; content: string }[] }[] = [];
-  const clock = { t: 1_700_000_000_000 };
+  const clock = { t: T0 };
+  const flags = { sendFails: opts.sendFails ?? false };
   const results = opts.llm ?? [agentJson('Oi!')];
+  let counter = 0;
 
   const llm: LlmClient = {
     async complete(input) {
@@ -47,8 +52,11 @@ export function makeHarness(opts: { llm?: LlmResult[]; config?: Partial<Config>;
   };
   const evolution: EvolutionClient = {
     async sendText(jid, text) {
-      if (opts.sendFails) throw new Error(`boom apikey=${API_KEY}`);
-      sent.push({ jid, text });
+      if (flags.sendFails) throw new Error(`boom apikey=${API_KEY}`);
+      counter += 1;
+      const messageId = opts.sendReturnsNoId ? null : `sent-${counter}`;
+      sent.push({ jid, text, messageId });
+      return { messageId };
     },
   };
 
@@ -65,10 +73,17 @@ export function makeHarness(opts: { llm?: LlmResult[]; config?: Partial<Config>;
       notices.push(text);
     },
   };
-  return { deps, sent, notices, llmCalls, clock, store, pix };
+  return { deps, sent, notices, llmCalls, clock, flags, store, pix };
 }
 
-export function upsert(o: { id: string; text: string | null; jid?: string; fromMe?: boolean; ad?: boolean }) {
+export function upsert(o: {
+  id: string;
+  text: string | null;
+  jid?: string;
+  fromMe?: boolean;
+  ad?: boolean;
+  tsSec?: number;
+}) {
   const text = o.text;
   const message =
     text === null
@@ -87,7 +102,7 @@ export function upsert(o: { id: string; text: string | null; jid?: string; fromM
     data: {
       key: { remoteJid: o.jid ?? JID, fromMe: o.fromMe ?? false, id: o.id },
       pushName: 'Maria',
-      messageTimestamp: 1_760_000_000,
+      messageTimestamp: o.tsSec ?? T0 / 1000,
       message,
     },
   };

@@ -15,12 +15,13 @@ describe('openCharge e o código copia e cola', () => {
     expect(charge.amountCents).toBe(2900);
   });
 
-  it('não grava o copyPaste no banco (a cobrança persistida segue igual ao tipo Charge)', async () => {
+  it('grava o copyPaste no banco para poder reenviar o Pix se o envio falhar', async () => {
     const store = createStore(':memory:');
     const pix = createFakePix();
 
     const charge = await openCharge({ store, pix }, 'a@s.whatsapp.net', 'tiragem-3-cartas');
 
-    expect(store.getCharge(charge.chargeId)).not.toHaveProperty('copyPaste');
+    expect(store.getCharge(charge.chargeId)).toEqual(charge);
+    expect(store.getCharge(charge.chargeId)!.copyPaste).toBe(charge.copyPaste);
   });
 });

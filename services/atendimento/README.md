@@ -16,8 +16,11 @@ Provedor de Pix ──webhook──▶ POST /webhook/pix/:token
 - **Filtro** (`src/filter.ts`): atende só mensagem com marca de anúncio, frase-gatilho ou conversa já atendida. Ignora o dono (`fromMe`), grupos e números da lista de bloqueio.
 - **Dinheiro:** o valor vem sempre da tabela fixa. "Pago" só muda por `confirmPayment`, que consulta o provedor. Qualquer valor em reais na resposta da IA que não esteja na tabela é barrado (`guardReply`).
 - **Cartas:** sorteadas pelo código, nunca pela IA, e só depois do pagamento confirmado.
-- **Dono assume:** se você responder no chat do lead, a IA para naquele chat. Mande `/ia` no chat para devolver à IA. (Respostas suas em até 5 s depois de uma resposta do bot são tratadas como eco do bot.)
-- **IA fora do ar** (422, timeout, modelo indisponível): o cliente recebe uma mensagem segura, o dono é avisado no log (`[AVISO AO DONO]`) e não há retry em loop.
+- **Dono assume:** se você responder no chat do lead, a IA para naquele chat. Mande `/ia` no chat para devolver à IA. O eco das mensagens do próprio bot (a Evolution as devolve como `fromMe`) é reconhecido pelo id da mensagem enviada; se a Evolution não devolver o id, vale uma janela de 5 s.
+- **IA fora do ar** (422, timeout, modelo indisponível): o cliente recebe **uma** mensagem segura por incidente (não repete enquanto a IA continuar falhando) e o dono é avisado.
+- **Avisos ao dono:** ficam gravados no banco e aparecem no log (`[AVISO AO DONO]`). Consulta: `GET /notices/<WEBHOOK_TOKEN>` (últimos 50). Ainda não há aviso ativo no celular: ver pendências.
+- **Pix e leitura:** o código copia e cola fica guardado e é reenviado se o cliente pedir de novo (não cria outra cobrança). A leitura só é marcada como entregue depois de **enviada**; se o envio falhar, a repetição do webhook reentrega com as mesmas cartas.
+- **Proteções da resposta da IA:** fora da entrega da leitura, ela não pode citar nome de carta, link, chave Pix, "pagamento confirmado/recebido", nem valores em reais fora da tabela (aceita `R$ 29`, `R$ 29,00`, `R$ 29.00`, `29 reais`, `29,00`...). Mensagens com mais de 10 minutos são ignoradas.
 
 ## Rodar
 
@@ -39,6 +42,10 @@ Opcionais: `PORT` (3100), `EVOLUTION_INSTANCE` (`tarot`), `NIM_BASE_URL`, `NIM_M
 
 ## Pendências conhecidas
 
+- **Aviso ativo ao dono:** hoje só log e `GET /notices`. Falta um canal que chegue até você (por exemplo, o painel do escritório lendo `/notices`, ou uma mensagem no seu WhatsApp).
+- **Cobrança pendente sem expiração:** com um Pix real que expira, o cliente que desistiu precisa de ajuda do dono para trocar de tiragem (o serviço avisa).
+- **Mensagem perdida se o processo cair no meio** (a mensagem é marcada como vista antes de processar) e a tabela de mensagens vistas cresce sem limite.
+- **Imagens `latest`** do Chatwoot e da Evolution no compose não estão fixadas em versão.
 - **Formato real da marca de anúncio:** as fixtures em `test/fixtures/` são suposição. Depois de escanear o QR e receber uma mensagem real de anúncio, capturar o payload (`docker compose logs evolution-api`) e ajustar `src/evolution/parse.ts` e as fixtures.
 - **Provedor de Pix real** e o formato do webhook dele (hoje o corpo é `{ "chargeId": "..." }`).
 - **Escopo definitivo** (catálogo, quantidade de cartas por item, prompt).

@@ -12,7 +12,7 @@ export class UnknownItemError extends Error {
   }
 }
 
-// copyPaste vai só para quem envia o Pix ao cliente; não é persistido (ver ledger: Ruling da Task 7).
+// O copyPaste é gravado junto da cobrança para poder reenviar o Pix se o envio falhar.
 export type OpenedCharge = Charge & { copyPaste: string };
 
 export async function openCharge(deps: Deps, jid: string, itemId: string): Promise<OpenedCharge> {
@@ -24,16 +24,18 @@ export async function openCharge(deps: Deps, jid: string, itemId: string): Promi
     amountCents: item.priceCents,
     description: item.name,
   });
-  const charge: Charge = {
+  const charge: OpenedCharge = {
     chargeId: created.chargeId,
     jid,
     itemId: item.id,
     amountCents: item.priceCents,
     status: 'pending',
     cards: null,
+    copyPaste: created.copyPaste,
+    delivered: false,
   };
   deps.store.saveCharge(charge);
-  return { ...charge, copyPaste: created.copyPaste };
+  return charge;
 }
 
 export async function confirmPayment(

@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { deliverReading, handleLead, type AgentDeps } from './agent.js';
+import { deliverReading, handleLead, markDelivered, type AgentDeps } from './agent.js';
 import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
 import { parseWebhook } from './evolution/parse.js';
@@ -30,9 +30,13 @@ export type ServerDeps = {
   notifyOwner: (text: string) => void | Promise<void>;
 };
 
-// Depois que o bot responde, a Evolution devolve essa mensagem no webhook como "fromMe".
-// Dentro desta janela, fromMe é tratado como eco do próprio bot e não como o dono assumindo.
+// A Evolution devolve no webhook, como "fromMe", as mensagens que o bot envia pela API.
+// O eco é reconhecido pelo id da mensagem enviada (marcado como visto). Plano B, quando a
+// Evolution não devolve o id: janela de tempo depois do envio.
 const BOT_ECHO_WINDOW_MS = 5000;
+// Mensagens mais velhas que isto (ex.: histórico após reconexão) não são respondidas.
+const MAX_MESSAGE_AGE_MS = 10 * 60_000;
+const NOTICES_LIMIT = 50;
 
 const pixBodySchema = z.object({ chargeId: z.string().min(1) });
 
@@ -56,12 +60,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const queues = new Map<string, Promise<void>>();
   const pending = new Set<Promise<void>>();
   const botActiveUntil = new Map<string, number>();
+  const sending = new Set<string>();
 
   async function safeNotify(text: string): Promise<void> {
     try {
-      await deps.notifyOwner(text);
+      deps.store.addNotice(text, deps.now());
     } catch {
       // Avisar o dono nunca pode derrubar o processamento.
+    }
+    try {
+      await deps.notifyOwner(text);
+    } catch {
+      // idem
     }
   }
 
@@ -80,17 +90,28 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
   }
 
-  async function sendAll(jid: string, texts: string[]): Promise<void> {
-    botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
-    for (const text of texts) {
-      try {
-        await deps.evolution.sendText(jid, text);
-      } catch {
-        await safeNotify(`Falha ao enviar mensagem para ${jid}; verifique a Evolution API.`);
-        return;
+  // Devolve true só se TODAS as mensagens foram enviadas.
+  async function sendAll(jid: string, texts: string[]): Promise<boolean> {
+    sending.add(jid);
+    let allSent = true;
+    let missingId = false;
+    try {
+      for (const text of texts) {
+        try {
+          const { messageId } = await deps.evolution.sendText(jid, text);
+          if (messageId) deps.store.markSeen(messageId);
+          else missingId = true;
+        } catch {
+          await safeNotify(`Falha ao enviar mensagem para ${jid}; verifique a Evolution API.`);
+          allSent = false;
+          break;
+        }
       }
+    } finally {
+      sending.delete(jid);
     }
-    botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+    if (missingId) botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+    return allSent;
   }
 
   function handleOwnerMessage(msg: InboundMessage): void {
@@ -101,12 +122,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       deps.store.saveConversation({ ...conversation, mode: 'ai' });
       return;
     }
-    if (deps.now() < (botActiveUntil.get(msg.jid) ?? 0)) return;
+    // Eco do próprio bot: enviando agora, ou (sem id de envio) dentro da janela de tempo.
+    if (sending.has(msg.jid) || deps.now() < (botActiveUntil.get(msg.jid) ?? 0)) return;
     if (conversation.mode === 'ai') deps.store.saveConversation({ ...conversation, mode: 'human' });
   }
 
   async function processMessage(msg: InboundMessage): Promise<void> {
     if (!deps.store.markSeen(msg.messageId)) return;
+    if (msg.timestampSec * 1000 < deps.now() - MAX_MESSAGE_AGE_MS) return;
     if (msg.fromMe) {
       handleOwnerMessage(msg);
       return;
@@ -133,7 +156,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
     if (status !== 'paid') return;
     const replies = await deliverReading(agentDeps, chargeId);
-    if (replies.length > 0) await sendAll(charge.jid, replies);
+    if (replies.length === 0) return;
+    // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
+    if (await sendAll(charge.jid, replies)) markDelivered(deps.store, chargeId);
   }
 
   app.decorate('settled', async () => {
@@ -141,6 +166,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
+
+  // Avisos ao dono gravados no banco (para o painel ou para consulta manual).
+  app.get<{ Params: { token: string } }>('/notices/:token', async (request, reply) => {
+    if (!sameToken(request.params.token, deps.config.webhookToken)) {
+      return reply.code(404).send({ error: 'not found' });
+    }
+    return { notices: deps.store.recentNotices(NOTICES_LIMIT) };
+  });
 
   app.post<{ Params: { token: string } }>('/webhook/evolution/:token', async (request, reply) => {
     if (!sameToken(request.params.token, deps.config.webhookToken)) {

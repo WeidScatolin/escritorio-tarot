@@ -1,5 +1,6 @@
 export type EvolutionClient = {
-  sendText(jid: string, text: string): Promise<void>;
+  /** Devolve o id da mensagem enviada (para reconhecer o eco no webhook), ou null se a resposta não trouxer. */
+  sendText(jid: string, text: string): Promise<{ messageId: string | null }>;
 };
 
 export type EvolutionClientOptions = {
@@ -31,6 +32,12 @@ export function createEvolutionClient(opts: EvolutionClientOptions): EvolutionCl
       }
       if (!response.ok) {
         throw new Error(`Evolution API respondeu ${response.status} ao enviar mensagem`);
+      }
+      try {
+        const body = (await response.json()) as { key?: { id?: unknown } };
+        return { messageId: typeof body.key?.id === 'string' && body.key.id ? body.key.id : null };
+      } catch {
+        return { messageId: null };
       }
     },
   };

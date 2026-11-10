@@ -49,9 +49,7 @@ describe('openCharge', () => {
     expect(charge.amountCents).toBe(item.priceCents);
     expect(charge.itemId).toBe(item.id);
     expect(charge.jid).toBe(JID);
-    // O copyPaste é devolvido a quem envia o Pix, mas de propósito não é persistido.
-    const { copyPaste: _copyPaste, ...persisted } = charge;
-    expect(store.getCharge(charge.chargeId)).toEqual(persisted);
+    expect(store.getCharge(charge.chargeId)).toEqual(charge);
   });
 
   it('item inventado lança UnknownItemError e não cria nada', async () => {

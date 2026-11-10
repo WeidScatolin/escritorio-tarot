@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { deliverReading, guardReply, handleLead, parseAgentOutput, type AgentDeps } from '../src/agent.js';
+import { deliverReading, guardReply, handleLead, markDelivered, parseAgentOutput, type AgentDeps } from '../src/agent.js';
 import { confirmPayment, openCharge } from '../src/payments.js';
 import { createFakePix } from '../src/pix/fake.js';
 import { createStore } from '../src/store.js';
@@ -165,15 +165,16 @@ describe('handleLead', () => {
     expect(result.replies.join(' ')).toMatch(/confirm/i);
   });
 
-  it('segundo pedido de cobrança com uma cobrança pendente não cria outro Pix', async () => {
+  it('segundo pedido do mesmo item com cobrança pendente não cria outro Pix e REENVIA o mesmo copia e cola', async () => {
     const llm = fakeLlm([json('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
-    await handleLead(deps(llm.client), inbound('quero a de 3 cartas'));
+    const first = await handleLead(deps(llm.client), inbound('quero a de 3 cartas'));
     const firstId = store.getConversation(JID)!.openChargeId;
+    const copyPaste = first.replies[1]!;
 
     const result = await handleLead(deps(llm.client), inbound('manda de novo o pix'));
 
     expect(store.getConversation(JID)!.openChargeId).toBe(firstId);
-    expect(result.replies.join(' ')).not.toContain('FAKE');
+    expect(result.replies).toContain(copyPaste);
   });
 
   it.each<LlmResult>([{ kind: 'blocked' }, { kind: 'timeout' }, { kind: 'unavailable' }])(
@@ -248,17 +249,38 @@ describe('deliverReading', () => {
     const text = replies.join('\n');
     for (const card of cards) expect(text).toContain(card);
     expect(text).toContain('O caminho se abre para você.');
+    // "entregue" só depois que o envio der certo (markDelivered), não quando a leitura é gerada.
+    expect(store.getCharge(charge.chargeId)!.delivered).toBe(false);
+    expect(store.getConversation(JID)!.stage).toBe('awaiting_payment');
+    markDelivered(store, charge.chargeId);
+    expect(store.getCharge(charge.chargeId)!.delivered).toBe(true);
     expect(store.getConversation(JID)!.stage).toBe('delivered');
   });
 
-  it('segunda chamada para a mesma cobrança não entrega de novo', async () => {
+  it('depois de marcada como entregue, a segunda chamada não entrega de novo', async () => {
     const charge = await paidCharge();
     await markPaid(charge.chargeId);
     const llm = fakeLlm([ok('Leitura.')]);
 
     await deliverReading(deps(llm.client), charge.chargeId);
+    markDelivered(store, charge.chargeId);
     expect(await deliverReading(deps(llm.client), charge.chargeId)).toEqual([]);
     expect(llm.calls).toHaveLength(1);
+  });
+
+  it('se o envio falhou (não marcou entregue), a repetição reentrega com as MESMAS cartas', async () => {
+    const charge = await paidCharge();
+    await markPaid(charge.chargeId);
+    const llm = fakeLlm([ok('Leitura.')]);
+
+    const first = await deliverReading(deps(llm.client), charge.chargeId);
+    const cardsAfterFirst = store.getCharge(charge.chargeId)!.cards;
+    const second = await deliverReading(deps(llm.client), charge.chargeId);
+
+    expect(first.length).toBeGreaterThan(0);
+    expect(second.length).toBeGreaterThan(0);
+    expect(store.getCharge(charge.chargeId)!.cards).toEqual(cardsAfterFirst);
+    for (const card of cardsAfterFirst!) expect(second.join('\n')).toContain(card);
   });
 
   it('LLM fora do ar: ainda entrega a lista de cartas e não perde a leitura paga', async () => {

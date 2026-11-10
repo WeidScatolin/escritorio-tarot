@@ -18,9 +18,10 @@ try {
   // Provedor de Pix FALSO até o dono escolher um real: nenhum pagamento é de verdade.
   console.warn('ATENÇÃO: usando provedor de Pix FALSO (somente teste).');
 
+  const store = createStore(config.dbPath);
   const app = buildServer({
     config,
-    store: createStore(config.dbPath),
+    store,
     llm: createNimClient({
       apiKey: config.nimApiKey,
       baseUrl: config.nimBaseUrl,
@@ -40,6 +41,7 @@ try {
   const stop = async () => {
     await app.settled();
     await app.close();
+    store.close();
     process.exit(0);
   };
   process.on('SIGTERM', stop);
