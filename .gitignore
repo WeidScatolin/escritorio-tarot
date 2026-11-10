@@ -5,3 +5,5 @@
 !*.env.example
 .vercel
 node_modules
+.superpowers/
+data/
