@@ -12,7 +12,10 @@ export class UnknownItemError extends Error {
   }
 }
 
-export async function openCharge(deps: Deps, jid: string, itemId: string): Promise<Charge> {
+// copyPaste vai só para quem envia o Pix ao cliente; não é persistido (ver ledger: Ruling da Task 7).
+export type OpenedCharge = Charge & { copyPaste: string };
+
+export async function openCharge(deps: Deps, jid: string, itemId: string): Promise<OpenedCharge> {
   const item = getItem(itemId);
   if (!item) throw new UnknownItemError(itemId);
 
@@ -30,7 +33,7 @@ export async function openCharge(deps: Deps, jid: string, itemId: string): Promi
     cards: null,
   };
   deps.store.saveCharge(charge);
-  return charge;
+  return { ...charge, copyPaste: created.copyPaste };
 }
 
 export async function confirmPayment(
