@@ -22,7 +22,7 @@ Tráfego pago (anúncios da Meta que abrem conversa no WhatsApp, nicho tarot) �
 ## Ordem de construção
 
 1. **Atendimento** (serviço em Node + TypeScript, em container): recebe mensagens, aplica o filtro, conversa com a IA, gera cobrança, confirma pagamento.
-2. **Painel com dados reais:** o Escritório lendo conversas e pagamentos de verdade.
+2. **Painel com dados reais:** o Escritório lendo conversas e pagamentos de verdade. **Feito** (servido pelo próprio serviço em `localhost:3100/painel/<token>`); o gasto em anúncios entra com o passo 3.
 3. **Gestor de anúncios:** ligar o repositório do Claude Ads à conta de anúncios da Meta.
 
 ## Próximos passos (atendimento)

@@ -60,6 +60,83 @@ describe('conversa: última mensagem do cliente (janela de 24 h)', () => {
   });
 });
 
+describe('cobrança: horário do pagamento', () => {
+  it('grava e devolve paidAtMs; sem informar, volta null', () => {
+    const store = createStore(':memory:');
+    store.saveCharge(base);
+    expect(store.getCharge('c1')!.paidAtMs).toBeNull();
+
+    store.saveCharge({ ...base, status: 'paid', paidAtMs: 1_700_000_999_000 });
+    expect(store.getCharge('c1')!.paidAtMs).toBe(1_700_000_999_000);
+  });
+
+  it('migra banco antigo de cobranças sem paid_at', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atendimento-'));
+    try {
+      const path = join(dir, 'old-paid.db');
+      const old = new DatabaseSync(path);
+      old.exec(`CREATE TABLE charges (
+        charge_id TEXT PRIMARY KEY, jid TEXT NOT NULL, item_id TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL, status TEXT NOT NULL, cards TEXT
+      );
+      INSERT INTO charges VALUES ('velha', 'a@s.whatsapp.net', 'tiragem-3-cartas', 2900, 'paid', NULL);`);
+      old.close();
+
+      const store = createStore(path);
+      expect(store.getCharge('velha')).toMatchObject({ status: 'paid', paidAtMs: null });
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('getStats (números do painel)', () => {
+  const NOW = 1_700_000_000_000;
+  const DAY_START = NOW - 6 * 3_600_000;
+  const conv = (jid: string, over: object = {}) => ({
+    jid,
+    mode: 'ai' as const,
+    engagedAt: 1,
+    openChargeId: null,
+    stage: 'greeting' as const,
+    lastInboundAtMs: NOW - 1000,
+    ...over,
+  });
+
+  it('banco vazio: tudo zerado', () => {
+    expect(createStore(':memory:').getStats(NOW, DAY_START)).toEqual({
+      chats: { total: 0, active24h: 0, human: 0, awaitingPayment: 0 },
+      charges: { pending: 0, paid: 0 },
+      revenue: { totalCents: 0, todayCents: 0 },
+    });
+  });
+
+  it('conta conversas ativas nas últimas 24 h, humanas e aguardando pagamento', () => {
+    const store = createStore(':memory:');
+    store.saveConversation(conv('a@s.whatsapp.net'));
+    store.saveConversation(conv('b@s.whatsapp.net', { mode: 'human' }));
+    store.saveConversation(conv('c@s.whatsapp.net', { stage: 'awaiting_payment' }));
+    store.saveConversation(conv('d@s.whatsapp.net', { lastInboundAtMs: NOW - 25 * 3_600_000 }));
+    store.saveConversation(conv('e@s.whatsapp.net', { lastInboundAtMs: null }));
+
+    expect(store.getStats(NOW, DAY_START).chats).toEqual({ total: 5, active24h: 3, human: 1, awaitingPayment: 1 });
+  });
+
+  it('faturamento soma só cobranças pagas; "hoje" usa o horário do pagamento', () => {
+    const store = createStore(':memory:');
+    const charge = (chargeId: string, over: object) => ({ ...base, chargeId, ...over });
+    store.saveCharge(charge('p1', { status: 'paid', amountCents: 2900, paidAtMs: NOW - 3_600_000 }));
+    store.saveCharge(charge('p2', { status: 'paid', amountCents: 4900, paidAtMs: NOW - 10 * 3_600_000 }));
+    store.saveCharge(charge('p3', { status: 'pending', amountCents: 9900 }));
+
+    const stats = store.getStats(NOW, DAY_START);
+
+    expect(stats.charges).toEqual({ pending: 1, paid: 2 });
+    expect(stats.revenue).toEqual({ totalCents: 7800, todayCents: 2900 });
+  });
+});
+
 describe('avisos ao dono', () => {
   it('grava e lista do mais novo para o mais antigo, respeitando o limite', () => {
     const store = createStore(':memory:');

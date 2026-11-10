@@ -22,6 +22,15 @@ Provedor de Pix ──webhook──▶ POST /webhook/pix/:token
 - **Pix e leitura:** o código copia e cola fica guardado e é reenviado se o cliente pedir de novo (não cria outra cobrança). A leitura só é marcada como entregue depois de **enviada**; se o envio falhar, a repetição do webhook reentrega com as mesmas cartas.
 - **Proteções da resposta da IA:** fora da entrega da leitura, ela não pode citar nome de carta, link, chave Pix, "pagamento confirmado/recebido", nem valores em reais fora da tabela (aceita `R$ 29`, `R$ 29,00`, `R$ 29.00`, `29 reais`, `29,00`...). Mensagens com mais de 10 minutos são ignoradas.
 
+## Painel (escritório pixel com dados reais)
+
+Abra no navegador do PC: `http://localhost:3100/painel/<WEBHOOK_TOKEN>` (o token está em `C:\chatwoot\atendimento.env`). A porta só aceita conexões do próprio PC.
+
+- **Tudo é real:** conversas das últimas 24 h, Pix pendentes/pagos, faturamento (total e de hoje, no horário de Brasília) e os avisos ao dono, lidos do banco por `GET /api/stats/<token>` a cada 3 s.
+- **Os bonecos refletem o serviço:** a Taróloga só "digita" enquanto há uma resposta sendo preparada, o Cobrança aguarda Pix quando há cobrança pendente, e o estagiário só anda quando há mensagem ou pagamento sendo processado. Moedas caem no cofre quando um Pix é confirmado.
+- **Gasto em anúncios e lucro:** aparecem como "—" (sem dados) até o gestor de anúncios (Claude Ads) ser ligado. O lucro líquido é faturamento menos esse gasto.
+- Com o Pix falso de hoje o faturamento fica em zero.
+
 ## Rodar
 
 ```bash

@@ -3,7 +3,7 @@ import { getItem } from './catalog.js';
 import type { PixProvider } from './pix/provider.js';
 import type { Charge, Store } from './store.js';
 
-type Deps = { store: Store; pix: PixProvider };
+type Deps = { store: Store; pix: PixProvider; now?: () => number };
 
 export class UnknownItemError extends Error {
   constructor(itemId: string) {
@@ -33,6 +33,7 @@ export async function openCharge(deps: Deps, jid: string, itemId: string): Promi
     cards: null,
     copyPaste: created.copyPaste,
     delivered: false,
+    paidAtMs: null,
   };
   deps.store.saveCharge(charge);
   return charge;
@@ -50,6 +51,6 @@ export async function confirmPayment(
   if (!result.paid) return 'pending';
   if (result.paidCents !== charge.amountCents) return 'mismatch';
 
-  deps.store.saveCharge({ ...charge, status: 'paid' });
+  deps.store.saveCharge({ ...charge, status: 'paid', paidAtMs: (deps.now ?? Date.now)() });
   return 'paid';
 }

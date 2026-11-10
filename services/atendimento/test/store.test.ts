@@ -62,8 +62,8 @@ describe('store', () => {
       status: 'pending',
       cards: null,
     };
-    // Sem copyPaste/delivered informados, voltam os valores padrão (null e false).
-    const defaults = { copyPaste: null, delivered: false };
+    // Sem copyPaste/delivered/paidAtMs informados, voltam os valores padrão (null, false e null).
+    const defaults = { copyPaste: null, delivered: false, paidAtMs: null };
     store.saveCharge(pending);
     expect(store.getCharge('c1')).toEqual({ ...pending, ...defaults });
 

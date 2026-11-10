@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { deliverReading, handleLead, markDelivered, type AgentDeps } from './agent.js';
@@ -51,6 +52,15 @@ function isIndividualChat(jid: string): boolean {
 
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+// "Hoje" no horário de Brasília (UTC-3, sem horário de verão), porque o container roda em UTC.
+const BRT_OFFSET_MS = 3 * 3_600_000;
+const DAY_MS = 24 * 3_600_000;
+function startOfDayBrt(nowMs: number): number {
+  return Math.floor((nowMs - BRT_OFFSET_MS) / DAY_MS) * DAY_MS + BRT_OFFSET_MS;
+}
+const PANEL_NOTICES = 5;
+const PANEL_FILE = new URL('../public/painel.html', import.meta.url);
+
 const pixBodySchema = z.object({ chargeId: z.string().min(1) });
 
 function sameToken(given: string, expected: string): boolean {
@@ -72,6 +82,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   const queues = new Map<string, Promise<void>>();
   const pending = new Set<Promise<void>>();
+  let processing = 0;
+  let panelHtml: string | null = null;
   const botActiveUntil = new Map<string, number>();
   const sending = new Set<string>();
   const limiter = createRateLimiter({
@@ -98,7 +110,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Um chat por vez: mensagens do mesmo jid são processadas em ordem.
   function enqueue(key: string, task: () => Promise<void>): void {
     const previous = queues.get(key) ?? Promise.resolve();
-    const next = previous.then(task).catch(async (error: unknown) => {
+    const next = previous
+      .then(async () => {
+        processing += 1;
+        try {
+          await task();
+        } finally {
+          processing -= 1;
+        }
+      })
+      .catch(async (error: unknown) => {
       const kind = error instanceof Error ? error.name : 'erro';
       await safeNotify(`Erro interno (${kind}) ao processar o chat ${key}.`);
     });
@@ -178,7 +199,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   async function processPayment(chargeId: string): Promise<void> {
     const charge = deps.store.getCharge(chargeId);
     if (!charge) return;
-    const status = await confirmPayment({ store: deps.store, pix: deps.pix }, chargeId);
+    const status = await confirmPayment({ store: deps.store, pix: deps.pix, now: deps.now }, chargeId);
     if (status === 'mismatch') {
       await safeNotify(`Pagamento com valor diferente na cobrança ${chargeId}; confira manualmente.`);
       return;
@@ -204,6 +225,31 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
+
+  // Números do painel: tudo vem do banco e da atividade real do serviço (nada é inventado).
+  app.get<{ Params: { token: string } }>('/api/stats/:token', async (request, reply) => {
+    if (!sameToken(request.params.token, deps.config.webhookToken)) {
+      return reply.code(404).send({ error: 'not found' });
+    }
+    const now = deps.now();
+    return {
+      generatedAtMs: now,
+      ...deps.store.getStats(now, startOfDayBrt(now)),
+      // Gasto em anúncios: sem dados até o gestor de anúncios (Claude Ads) existir.
+      spend: { totalCents: null, todayCents: null },
+      activity: { processing },
+      notices: deps.store.recentNotices(PANEL_NOTICES).map((n) => ({ atMs: n.atMs, text: n.text })),
+    };
+  });
+
+  // A própria tela do escritório, servida pelo serviço (o painel na Vercel não enxerga o seu PC).
+  app.get<{ Params: { token: string } }>('/painel/:token', async (request, reply) => {
+    if (!sameToken(request.params.token, deps.config.webhookToken)) {
+      return reply.code(404).send({ error: 'not found' });
+    }
+    panelHtml ??= readFileSync(PANEL_FILE, 'utf8');
+    return reply.type('text/html; charset=utf-8').send(panelHtml);
+  });
 
   // Avisos ao dono gravados no banco (para o painel ou para consulta manual).
   app.get<{ Params: { token: string } }>('/notices/:token', async (request, reply) => {
