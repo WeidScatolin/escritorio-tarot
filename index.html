@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Escritório do Tarot</title>
+<style>
+  :root{--bg:#17110d;--panel:#2b2118;--line:#6b4a2b;--ink:#ffe9b0;--green:#7bed9f;--red:#ff8a80}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-monospace,Consolas,monospace;padding:16px}
+  .wrap{max-width:1100px;margin:0 auto}
+  .top{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+  .box{flex:1 1 150px;background:var(--panel);border:3px solid var(--line);padding:8px 12px;box-shadow:3px 3px 0 #0007}
+  .box small{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}
+  .box b{font-size:22px}
+  .g{color:var(--green)}.r{color:var(--red)}
+  a.btn{flex:1 1 170px;display:flex;align-items:center;justify-content:center;gap:8px;background:#1f8f4e;color:#fff;border:3px solid #0d5c2f;text-decoration:none;font-weight:bold;box-shadow:3px 3px 0 #0007;padding:8px 12px}
+  a.btn:hover{background:#27b062}
+  .stage{position:relative;display:block;width:max-content;margin:0 auto;border:6px solid #4a3426;background:#000;box-shadow:6px 6px 0 #0008}
+  .stage canvas{display:block;image-rendering:pixelated}
+  #o{position:absolute;left:0;top:0;pointer-events:none}
+  .note{font-size:12px;opacity:.7;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="box"><small>💸 Gasto em anúncios</small><b class="r" id="spend">R$ 412,00</b></div>
+    <div class="box"><small>💰 Faturamento</small><b class="g" id="rev">R$ 1.280,00</b></div>
+    <div class="box"><small>📈 Lucro / ROAS</small><b id="profit">R$ 868,00 · 3,1x</b></div>
+    <div class="box"><small>💬 Conversas ativas</small><b id="chats">6</b></div>
+    <a class="btn" id="cw" href="http://localhost:3000" target="_blank" rel="noopener">💬 Abrir Chatwoot ↗</a>
+  </div>
+
+  <div class="stage"><canvas id="c" width="320" height="180"></canvas><canvas id="o"></canvas></div>
+  <div class="note">Rascunho com dados fictícios. A porta do Chatwoot (3000) é palpite meu. Você também pode clicar no servidor "CHATWOOT" na parede.</div>
+</div>
+
+<script>
+const CHATWOOT_URL = 'http://localhost:3000';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const W = 320, H = 180;
+const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)};
+const SKIN='#f1c27d';
+ctx.textBaseline='top';
+
+// camada de texto em alta resolução + escala inteira do pixel art
+const ov = document.getElementById('o'), c2 = ov.getContext('2d');
+let K = 3;
+function fit(){
+  const dpr = window.devicePixelRatio || 1;
+  const avail = Math.min(document.querySelector('.wrap').clientWidth - 12, 1500);
+  K = Math.max(2, Math.floor(avail * dpr / W));
+  const cssW = W * K / dpr, cssH = H * K / dpr;
+  cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+  ov.style.width = cssW + 'px'; ov.style.height = cssH + 'px';
+  ov.width = W * K; ov.height = H * K;
+}
+const FONT = 'ui-monospace,Consolas,"Courier New",monospace';
+function T(txt,x,y,size,color,alpha){
+  c2.setTransform(K,0,0,K,0,0); c2.textBaseline='top';
+  c2.font = 'bold ' + size + 'px ' + FONT; c2.globalAlpha = alpha==null?1:alpha;
+  c2.fillStyle = color; c2.fillText(txt,x,y); c2.globalAlpha = 1;
+}
+function TW(txt,size){ c2.setTransform(K,0,0,K,0,0); c2.font='bold '+size+'px '+FONT; return c2.measureText(txt).width }
+window.addEventListener('resize', fit); fit();
+
+// ---------- estado ----------
+let rev = 1280, spend = 412, chats = 6;
+const hist = {rev:[], sp:[]};
+for(let i=0;i<54;i++){hist.rev.push(1280-(54-i)*9+Math.random()*10);hist.sp.push(412-(54-i)*3+Math.random()*4)}
+const floaters = [], coins = [];
+const fmt = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function updateHud(){
+  document.getElementById('spend').textContent = fmt(spend);
+  document.getElementById('rev').textContent = fmt(rev);
+  document.getElementById('profit').textContent = fmt(rev-spend) + ' · ' + (rev/spend).toFixed(1).replace('.',',') + 'x';
+  document.getElementById('chats').textContent = chats;
+}
+setInterval(()=>{ spend += 0.35*1.5; hist.rev.push(rev); hist.sp.push(spend); hist.rev.shift(); hist.sp.shift(); updateHud(); },1500);
+setInterval(()=>{ chats = Math.max(3, Math.min(9, chats + (Math.random()<.5?-1:1))); updateHud(); },5000);
+
+// ---------- estações ----------
+const ST = [
+  {dx:14,  name:'Taróloga',  shirt:'#8e24aa', dark:'#6a1b9a', hair:'#4a148c', say:['Tirando 3 cartas','Lendo o Arcano','Respondendo','Carta: A Estrela']},
+  {dx:104, name:'Cobrança',  shirt:'#2e7d32', dark:'#1b5e20', hair:'#4e342e', say:['Gerando Pix','Aguardando Pix','Pix recebido!','Confirmando R$']},
+  {dx:194, name:'Gestora Ads', shirt:'#1565c0', dark:'#0d47a1', hair:'#212121', say:['Subindo orçamento','Pausando anúncio','Testando criativo','CPA em queda']}
+];
+ST.forEach(s=>{ s.cx = s.dx + 31; s.cy = 100; });
+const RACK = {x:252,y:4,w:26,h:34};
+
+// ---------- cenário ----------
+function drawFloor(){
+  for(let y=40;y<H;y+=10){
+    for(let x=-((y/10)%2)*10;x<W;x+=20){
+      const k=((x*7+y*13)>>2)%3;
+      R(x,y,20,10,k===0?'#c8a373':k===1?'#c19a6b':'#cdaa7c');
+      R(x,y+9,20,1,'#a67c52'); R(x+19,y,1,10,'#a67c52');
+    }
+  }
+  // tapete
+  R(96,128,128,44,'#6d2f4f'); R(98,130,124,40,'#8a3b63'); R(102,134,116,32,'#6d2f4f');
+  for(let x=104;x<216;x+=8){R(x,136,4,1,'#e2b97f');R(x,163,4,1,'#e2b97f')}
+}
+function clipRect(x,y,w,h,fn){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();fn();ctx.restore()}
+function drawWall(t){
+  R(0,0,W,40,'#4d5d7c');
+  for(let x=0;x<W;x+=8) R(x,0,1,36,'#46557a');
+  R(0,36,W,4,'#2f3a52');
+  // janelas
+  [8].forEach((x,i)=>{
+    R(x,5,32,28,'#e9e3d2');
+    clipRect(x+2,7,28,24,()=>{
+      R(x+2,7,28,24,'#8fd3ff');
+      const cx=((t*3+i*20)%48)-12; R(x+2+cx,12,14,4,'#fff');R(x+5+cx,10,8,3,'#fff');
+      R(x+2,26,28,5,'#6bb36b');
+    });
+    R(x+15,7,2,24,'#e9e3d2'); R(x+2,18,28,2,'#e9e3d2');
+  });
+  // telefone / WhatsApp
+  R(216,6,12,26,'#111'); R(217,8,10,20,'#25d366'); R(219,12,6,4,'#fff'); R(219,18,5,3,'#dcf8c6');
+  if(Math.floor(t*2)%2) R(225,7,3,3,'#ff3d00');
+  // PLACAR: faturamento / gasto / lucro líquido
+  R(45,2,60,36,'#0b0b0b'); R(46,3,58,34,'#3b2c20'); R(47,4,56,32,'#0d1b2a');
+  const prof=rev-spend, rows=[['FATURAMENTO',fmt(rev),'#7bed9f'],['GASTO EM ADS',fmt(spend),'#ff8a80'],['LUCRO LÍQUIDO',fmt(prof),prof>=0?'#ffd54f':'#ff5252']];
+  rows.forEach(([lb,v,c],i)=>{
+    const y=5+i*10; T(lb,50,y,4,'#9fb3c8'); T(v,50,y+4,6,c);
+    if(i<2) R(49,y+9,52,1,'#16314d');
+  });
+  // TV com gráfico
+  R(108,4,104,32,'#0b0b0b'); R(110,6,100,28,'#0d1b2a');
+  for(let i=0;i<4;i++) R(110,10+i*6,100,1,'#16314d');
+  const mx = Math.max(...hist.rev)*1.05, mn = Math.min(...hist.sp)*.8;
+  const line=(arr,c)=>{ctx.fillStyle=c;arr.forEach((v,i)=>{const y=32-((v-mn)/(mx-mn))*24;ctx.fillRect(112+i*1.8|0,Math.round(y),2,2)})};
+  line(hist.sp,'#ff8a80'); line(hist.rev,'#7bed9f');
+  R(112,7,3,3,'#7bed9f'); R(150,7,3,3,'#ff8a80');
+  T('fatur.',117,6.5,5,'#cfe8ff'); T('gasto',155,6.5,5,'#cfe8ff');
+  // pôster de tarot
+  R(234,6,16,24,'#e2b97f'); R(236,8,12,20,'#2d1457'); R(240,14,4,6,'#ffd54f'); R(239,16,6,2,'#ffd54f');
+  // rack Chatwoot
+  R(RACK.x,RACK.y,RACK.w,RACK.h,'#20242b'); R(RACK.x+1,RACK.y+1,RACK.w-2,5,'#1f8f4e');
+  T('CHATWOOT',RACK.x+2,RACK.y+1.5,4,'#fff');
+  for(let i=0;i<4;i++){
+    const yy=RACK.y+8+i*7; R(RACK.x+2,yy,RACK.w-4,5,'#343b45');
+    R(RACK.x+4,yy+1,3,3,Math.floor(t*3+i)%2?'#7bed9f':'#1b5e20');
+    R(RACK.x+9,yy+1,3,3,Math.floor(t*2+i*2)%3?'#4fc3f7':'#0d3c5c');
+    R(RACK.x+15,yy+2,8,1,'#8892a0');
+  }
+  T('abrir ↗',RACK.x+1,RACK.y+RACK.h+2,5,'#ffe9b0');
+}
+function drawProps(t){
+  // máquina de café
+  R(290,64,20,24,'#37474f'); R(292,66,16,8,'#111'); R(296,78,8,6,'#eceff1'); R(298,70,4,3,Math.floor(t*2)%2?'#ff7043':'#6d2f1a');
+  const sy=Math.floor(t*4)%3; R(299,60-sy,1,3,'#ffffffaa'); R(301,58-sy,1,3,'#ffffff88');
+  // bebedouro
+  R(294,100,14,20,'#cfd8dc'); R(296,92,10,10,'#81d4fa'); R(299,104,4,2,'#455a64');
+  if(Math.floor(t*3)%4===0) R(303,92-Math.floor(t*6)%4,2,2,'#e1f5fe');
+  // cofre
+  R(284,142,24,24,'#455a64'); R(286,144,20,20,'#607d8b'); R(290,148,12,12,'#37474f');
+  R(295,152,3,4,'#ffd54f'); R(291,150,2,2,'#ffd54f');
+  T('COFRE',286,167.5,5,'#ffe9b0');
+  // plantas
+  [[4,110],[4,150],[272,100]].forEach(([x,y])=>{R(x,y+10,10,8,'#8d5a2b');R(x-2,y,14,6,'#2e7d32');R(x+1,y-4,8,6,'#43a047');R(x+3,y-6,4,3,'#66bb6a')});
+}
+function drawStation(s,idx,t){
+  const dx=s.dx;
+  R(dx+2,64,76,26,'#00000033');
+  R(dx,62,76,24,'#9a6a3a'); R(dx,62,76,2,'#b98550'); R(dx,84,76,2,'#5e3b1a');
+  for(let x=dx+6;x<dx+74;x+=14) R(x,64,1,20,'#8a5c30');
+  // teclado/mouse
+  const kx = idx===2? dx+30 : dx+12;
+  R(kx,74,20,6,'#cfd8dc'); for(let i=0;i<5;i++) R(kx+2+i*4,75,2,1,'#90a4ae'),R(kx+2+i*4,77,2,1,'#90a4ae');
+  R(kx+23,75,4,6,'#b0bec5');
+  // monitor principal
+  const mon=(x,fn)=>{R(x+9,63,8,3,'#222');R(x,49,28,15,'#1a1a1a');R(x+2,51,24,11,'#101820');clipRect(x+2,51,24,11,()=>fn(x+2,51))};
+  if(idx===0){
+    mon(dx+8,(x,y)=>{
+      const n=Math.floor(t*1.2);
+      for(let i=0;i<3;i++){
+        const me=(n+i)%2===0; const yy=y+1+i*3.5;
+        R(me?x+10:x+1,yy,13,2,me?'#25d366':'#eceff1');
+      }
+      R(x+1,y+9,22,2,'#37474f');
+    });
+    // bola de cristal + cartas
+    const p=0.5+0.5*Math.sin(t*3);
+    R(dx+52,66,12,12,'#4527a0'); R(dx+53,64,10,10,p>.5?'#b388ff':'#9575cd'); R(dx+55,66,3,3,'#fff');
+    R(dx+66,66,4,7,'#fff176');R(dx+68,68,4,7,'#ef5350');R(dx+64,70,4,7,'#4fc3f7');
+  }
+  if(idx===1){
+    mon(dx+8,(x,y)=>{
+      for(let i=0;i<3;i++){
+        R(x+1,y+1+i*3.5,3,2,Math.floor(t*2+i)%3?'#7bed9f':'#fdd835');
+        R(x+6,y+1+i*3.5,13,2,'#cfd8dc');
+      }
+      R(x+19,y+8,5,2,'#7bed9f');
+    });
+    R(dx+52,66,12,10,'#fafafa'); R(dx+54,68,8,1,'#b0bec5');R(dx+54,71,8,1,'#b0bec5'); R(dx+55,64,12,9,'#eceff1');
+    R(dx+66,76,6,6,'#6d4c41'); R(dx+67,77,4,2,'#3e2723');
+    const sy=Math.floor(t*3)%3; R(dx+68,73-sy,1,2,'#ffffffaa');
+  }
+  if(idx===2){
+    mon(dx+4,(x,y)=>{ for(let i=0;i<5;i++){const h=3+Math.round(3+3*Math.sin(t*2+i));R(x+2+i*4,y+10-h,3,h,'#ffd54f')} R(x,y+10,24,1,'#90a4ae') });
+    mon(dx+40,(x,y)=>{ ctx.fillStyle='#4fc3f7';for(let i=0;i<22;i++){ctx.fillRect(x+1+i,Math.round(y+8-i*.25-3*Math.sin(t*2+i*.5)),1,1)} R(x+1,y+10,22,1,'#90a4ae') });
+    R(dx+6,76,10,7,'#fff'); R(dx+7,77,8,1,'#ef5350'); R(dx+7,79,6,1,'#b0bec5');
+  }
+}
+function drawWorker(s,idx,t){
+  const {cx,cy}=s, ph=idx*1.7;
+  const a=Math.floor(t*6+ph)%2;
+  R(cx-10,cy-4,20,14,'#263238'); R(cx-9,cy-3,18,12,'#37474f');
+  R(cx-8,cy-5,16,9,s.shirt); R(cx-8,cy-5,16,1,s.dark);
+  if(idx!==1) R(cx-5,cy-6,10,8,s.hair);
+  R(cx-9,cy-14+a,3,10,s.dark); R(cx-9,cy-16+a,3,3,SKIN);
+  R(cx+6,cy-14+(1-a),3,10,s.dark); R(cx+6,cy-16+(1-a),3,3,SKIN);
+  const sh = (Math.floor((t+ph*2)/3.5)%4===0)?1:0;
+  R(cx-4+sh,cy-12,9,9,s.hair); R(cx-5+sh,cy-9,1,3,SKIN); R(cx+5+sh,cy-9,1,3,SKIN);
+  if(sh) R(cx+4,cy-11,1,3,SKIN);
+  if(idx===0){ R(cx-8,cy-14,16,10,'#5e35b1'); R(cx-4,cy-12,8,6,'#7e57c2'); R(cx-1,cy-10,2,2,'#ffd54f'); }
+  if(idx===2){ R(cx-2,cy-16,5,4,s.hair); }
+  // nome
+  const w=TW(s.name,6); T(s.name,cx-w/2,121.5,6,'#2b2118');
+  // balão
+  const cyc=Math.floor(t/3.2+idx)%s.say.length, ph2=(t/3.2+idx)%1;
+  if(ph2<.75) bubble(s.say[cyc],cx+12,86);
+}
+function bubble(text,x,y){
+  const w=Math.ceil(TW(text,6))+6;
+  R(x-1,y-1,w+2,11,'#222'); R(x,y,w,9,'#fff'); R(x-3,y+6,4,3,'#222'); R(x-2,y+6,3,2,'#fff');
+  T(text,x+3,y+1.5,6,'#222');
+}
+
+// ---------- estagiário ----------
+const walkY=138;
+const route=[
+  {x:ST[2].cx,y:walkY,wait:1.3,label:'novo lead',carry:true},
+  {x:ST[0].cx,y:walkY,wait:1.6,label:'leitura paga',carry:true},
+  {x:ST[1].cx,y:walkY,wait:1.6,label:'Pix gerado',carry:true},
+  {x:272,y:150,wait:1.4,label:null,carry:false,deposit:true}
+];
+const wk={x:ST[2].cx,y:walkY,dir:-1,i:0,wait:1,carry:false};
+let last=performance.now();
+function stepWalker(dt){
+  if(wk.wait>0){wk.wait-=dt;return}
+  const tg=route[wk.i]; const dxx=tg.x-wk.x, dyy=tg.y-wk.y, d=Math.hypot(dxx,dyy);
+  if(d<1.5){
+    wk.x=tg.x;wk.y=tg.y;wk.wait=tg.wait;wk.carry=tg.carry;
+    if(tg.label) floaters.push({x:wk.x,y:wk.y-18,txt:tg.label,t0:performance.now(),c:'#fff'});
+    if(tg.deposit){
+      const v=[29,49,79][Math.floor(Math.random()*3)];
+      rev+=v; updateHud();
+      floaters.push({x:288,y:136,txt:'+R$ '+v,t0:performance.now(),c:'#ffd54f'});
+      for(let k=0;k<8;k++) coins.push({x:296,y:148,vx:(Math.random()-.5)*40,vy:-30-Math.random()*30,t0:performance.now()});
+    }
+    wk.i=(wk.i+1)%route.length; return;
+  }
+  const sp=42; wk.x+=dxx/d*sp*dt; wk.y+=dyy/d*sp*dt; if(Math.abs(dxx)>1) wk.dir=dxx>0?1:-1;
+}
+function drawWalker(t){
+  const {x,y,dir}=wk, st=Math.floor(t*8)%2, moving=wk.wait<=0;
+  R(x-6,y+10,12,2,'#0003');
+  R(x-4,y+6+(moving&&st?1:0),3,4,'#37474f'); R(x+1,y+6+(moving&&!st?1:0),3,4,'#37474f');
+  R(x-5,y-2,10,9,'#ef6c00'); R(x-5,y-2,10,1,'#bf360c');
+  R(x-3,y-9,7,7,'#212121'); R(dir>0?x+1:x-3,y-6,3,3,SKIN);
+  if(wk.carry){R(x+(dir>0?4:-10),y-1,7,8,'#fff');R(x+(dir>0?5:-9),y+1,5,1,'#90a4ae');R(x+(dir>0?5:-9),y+3,4,1,'#90a4ae')}
+}
+function drawFx(now){
+  for(let i=floaters.length-1;i>=0;i--){
+    const f=floaters[i], a=(now-f.t0)/1600; if(a>=1){floaters.splice(i,1);continue}
+    const al=1-a*a, w=TW(f.txt,6); ctx.globalAlpha=al; R(f.x-w/2-2,f.y-a*12-1,Math.ceil(w)+4,8,'#000'); ctx.globalAlpha=1;
+    T(f.txt,f.x-w/2,f.y-a*12,6,f.c,al);
+  }
+  for(let i=coins.length-1;i>=0;i--){
+    const c=coins[i], a=(now-c.t0)/1000; if(a>=1){coins.splice(i,1);continue}
+    R(c.x+c.vx*a,c.y+c.vy*a+60*a*a,3,3,'#ffd54f'); R(c.x+c.vx*a,c.y+c.vy*a+60*a*a,3,1,'#fff59d');
+  }
+}
+
+// ---------- loop ----------
+function frame(now){
+  const dt=Math.min(.1,(now-last)/1000); last=now; const t=now/1000;
+  stepWalker(dt);
+  c2.setTransform(1,0,0,1,0,0); c2.clearRect(0,0,ov.width,ov.height);
+  drawFloor(); drawWall(t); drawProps(t);
+  ST.forEach((s,i)=>drawStation(s,i,t));
+  ST.forEach((s,i)=>drawWorker(s,i,t));
+  drawWalker(t); drawFx(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+updateHud();
+
+// clique no rack abre o Chatwoot
+function toInternal(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H}}
+const onRack=p=>p.x>=RACK.x&&p.x<=RACK.x+RACK.w&&p.y>=RACK.y&&p.y<=RACK.y+RACK.h+9;
+cv.addEventListener('mousemove',e=>{cv.style.cursor=onRack(toInternal(e))?'pointer':'default'});
+cv.addEventListener('click',e=>{if(onRack(toInternal(e)))window.open(CHATWOOT_URL,'_blank','noopener')});
+</script>
+</body>
+</html>
