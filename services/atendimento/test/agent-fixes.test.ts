@@ -52,7 +52,7 @@ beforeEach(() => {
 
 describe('F1: Pix pendente de outro item', () => {
   it('não cria outra cobrança, reenvia o Pix já aberto e avisa o dono', async () => {
-    const llm1 = fakeLlm([json('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
+    const llm1 = fakeLlm([json('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' })]);
     const first = await handleLead(deps(llm1.client), inbound('quero a de 3 cartas'));
     const openId = store.getConversation(JID)!.openChargeId;
 

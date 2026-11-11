@@ -8,18 +8,18 @@ describe('openCharge e o código copia e cola', () => {
     const store = createStore(':memory:');
     const pix = createFakePix();
 
-    const charge = await openCharge({ store, pix }, 'a@s.whatsapp.net', 'tiragem-3-cartas');
+    const charge = await openCharge({ store, pix }, 'a@s.whatsapp.net', 'tiragem-intermediaria');
 
     expect(charge.copyPaste).toContain('FAKE');
     expect(charge.copyPaste).toContain(charge.chargeId);
-    expect(charge.amountCents).toBe(2900);
+    expect(charge.amountCents).toBe(2500);
   });
 
   it('grava o copyPaste no banco para poder reenviar o Pix se o envio falhar', async () => {
     const store = createStore(':memory:');
     const pix = createFakePix();
 
-    const charge = await openCharge({ store, pix }, 'a@s.whatsapp.net', 'tiragem-3-cartas');
+    const charge = await openCharge({ store, pix }, 'a@s.whatsapp.net', 'tiragem-intermediaria');
 
     expect(store.getCharge(charge.chargeId)).toEqual(charge);
     expect(store.getCharge(charge.chargeId)!.copyPaste).toBe(charge.copyPaste);

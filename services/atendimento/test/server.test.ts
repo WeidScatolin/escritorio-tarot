@@ -67,7 +67,7 @@ describe('POST /webhook/evolution/:token', () => {
   });
 
   it('mesmo messageId duas vezes: uma resposta e uma cobrança só', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })] });
+    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' })] });
     const payload = upsert({ id: 'dup-1', text: 'quero a de 3 cartas', ad: true });
 
     await sendMessages(h, payload, payload);
@@ -166,7 +166,7 @@ describe('POST /webhook/pix/:token', () => {
     const chargeId = h.store.getConversation(JID)!.openChargeId!;
     return { app, chargeId };
   }
-  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Uma leitura bonita.')];
+  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Uma leitura bonita.')];
 
   it('pagamento confirmado pelo provedor: entrega a leitura uma única vez', async () => {
     const h = makeHarness({ llm: script });

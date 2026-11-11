@@ -55,6 +55,8 @@ export type Store = {
   recentMessages(jid: string, limit: number): StoredMessage[];
   saveCharge(c: Charge): void;
   getCharge(chargeId: string): Charge | null;
+  /** Cartas de tiragens já sorteadas para este cliente (de outras cobranças), da mais recente para a mais antiga. */
+  previousDraws(jid: string, exceptChargeId: string): string[][];
   addNotice(text: string, atMs: number): void;
   /** Avisos ao dono, do mais novo para o mais antigo. */
   recentNotices(limit: number): Notice[];
@@ -184,6 +186,9 @@ export function createStore(dbPath: string): Store {
   const selectCharge = db.prepare(
     'SELECT charge_id, jid, item_id, amount_cents, status, cards, copy_paste, delivered, paid_at FROM charges WHERE charge_id = ?',
   );
+  const selectPreviousDraws = db.prepare(
+    'SELECT cards FROM charges WHERE jid = ? AND charge_id != ? AND cards IS NOT NULL ORDER BY rowid DESC',
+  );
   const countChats = db.prepare(
     `SELECT COUNT(*) AS total,
             COALESCE(SUM(CASE WHEN last_inbound_at >= ? THEN 1 ELSE 0 END), 0) AS active,
@@ -273,6 +278,11 @@ export function createStore(dbPath: string): Store {
         delivered: row.delivered === 1,
         paidAtMs: row.paid_at,
       };
+    },
+
+    previousDraws(jid, exceptChargeId) {
+      const rows = selectPreviousDraws.all(jid, exceptChargeId) as { cards: string }[];
+      return rows.map((row) => JSON.parse(row.cards) as string[]);
     },
 
     getAdSpend() {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createStore } from '../src/store.js';
-import { PLACEHOLDER_CATALOG, formatBRL, getItem } from '../src/catalog.js';
+import { CATALOG, formatBRL, getItem } from '../src/catalog.js';
 import { createFakePix } from '../src/pix/fake.js';
 import { UnknownItemError, confirmPayment, openCharge } from '../src/payments.js';
 
@@ -20,8 +20,8 @@ describe('catalog', () => {
   });
 
   it('catálogo provisório tem preços em centavos inteiros e getItem acha por id', () => {
-    expect(PLACEHOLDER_CATALOG.length).toBeGreaterThan(0);
-    for (const item of PLACEHOLDER_CATALOG) {
+    expect(CATALOG.length).toBeGreaterThan(0);
+    for (const item of CATALOG) {
       expect(Number.isInteger(item.priceCents)).toBe(true);
       expect(item.priceCents).toBeGreaterThan(0);
       expect(getItem(item.id)).toEqual(item);
@@ -43,7 +43,7 @@ describe('fake pix', () => {
 describe('openCharge', () => {
   it('cria cobrança pending com o valor do catálogo', async () => {
     const { store, deps } = setup();
-    const item = PLACEHOLDER_CATALOG[0]!;
+    const item = CATALOG[0]!;
     const charge = await openCharge(deps, JID, item.id);
     expect(charge.status).toBe('pending');
     expect(charge.amountCents).toBe(item.priceCents);
@@ -62,14 +62,14 @@ describe('openCharge', () => {
 describe('confirmPayment', () => {
   it('antes do pagamento retorna pending e a cobrança segue pending', async () => {
     const { store, deps } = setup();
-    const charge = await openCharge(deps, JID, PLACEHOLDER_CATALOG[0]!.id);
+    const charge = await openCharge(deps, JID, CATALOG[0]!.id);
     expect(await confirmPayment(deps, charge.chargeId)).toBe('pending');
     expect(store.getCharge(charge.chargeId)?.status).toBe('pending');
   });
 
   it('pagamento com o valor certo vira paid', async () => {
     const { store, pix, deps } = setup();
-    const charge = await openCharge(deps, JID, PLACEHOLDER_CATALOG[0]!.id);
+    const charge = await openCharge(deps, JID, CATALOG[0]!.id);
     pix.simulatePayment(charge.chargeId);
     expect(await confirmPayment(deps, charge.chargeId)).toBe('paid');
     expect(store.getCharge(charge.chargeId)?.status).toBe('paid');
@@ -77,7 +77,7 @@ describe('confirmPayment', () => {
 
   it('valor pago diferente do cobrado retorna mismatch e não vira paid', async () => {
     const { store, pix, deps } = setup();
-    const charge = await openCharge(deps, JID, PLACEHOLDER_CATALOG[0]!.id);
+    const charge = await openCharge(deps, JID, CATALOG[0]!.id);
     pix.simulatePayment(charge.chargeId, charge.amountCents - 1);
     expect(await confirmPayment(deps, charge.chargeId)).toBe('mismatch');
     expect(store.getCharge(charge.chargeId)?.status).not.toBe('paid');
@@ -93,7 +93,7 @@ describe('confirmPayment', () => {
 
   it('cobrança já paga continua paid (idempotente)', async () => {
     const { pix, deps } = setup();
-    const charge = await openCharge(deps, JID, PLACEHOLDER_CATALOG[0]!.id);
+    const charge = await openCharge(deps, JID, CATALOG[0]!.id);
     pix.simulatePayment(charge.chargeId);
     expect(await confirmPayment(deps, charge.chargeId)).toBe('paid');
     expect(await confirmPayment(deps, charge.chargeId)).toBe('paid');

@@ -50,7 +50,7 @@ describe('GET /api/stats/:token', () => {
   });
 
   it('com um lead e uma cobrança aberta: conversa ativa e Pix pendente', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' })] });
+    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' })] });
     const app = buildServer(h.deps);
     await lead(h, app);
 
@@ -62,7 +62,7 @@ describe('GET /api/stats/:token', () => {
   });
 
   it('depois do pagamento: faturamento total e de hoje', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Leitura.')] });
+    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Leitura.')] });
     const app = buildServer(h.deps);
     await lead(h, app);
     const chargeId = h.store.getConversation(JID)!.openChargeId!;
@@ -73,11 +73,11 @@ describe('GET /api/stats/:token', () => {
     const body = await stats(app);
 
     expect(body.charges).toEqual({ pending: 0, paid: 1 });
-    expect(body.revenue).toEqual({ totalCents: 2900, todayCents: 2900 });
+    expect(body.revenue).toEqual({ totalCents: 2500, todayCents: 2500 });
   });
 
   it('no dia seguinte (horário de Brasília) o faturamento de ontem sai de "hoje" mas fica no total', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Leitura.')] });
+    const h = makeHarness({ llm: [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Leitura.')] });
     const app = buildServer(h.deps);
     await lead(h, app);
     const chargeId = h.store.getConversation(JID)!.openChargeId!;
@@ -88,7 +88,7 @@ describe('GET /api/stats/:token', () => {
     h.clock.t += 25 * 3_600_000;
     const body = await stats(app);
 
-    expect(body.revenue).toEqual({ totalCents: 2900, todayCents: 0 });
+    expect(body.revenue).toEqual({ totalCents: 2500, todayCents: 0 });
   });
 
   it('inclui os avisos mais recentes ao dono', async () => {
@@ -138,7 +138,7 @@ describe('gasto em anúncios e lucro no painel', () => {
   });
 
   async function withRevenue(h: Harness) {
-    // R$ 29,00 de faturamento (hoje e total), pagando uma cobrança de verdade.
+    // R$ 25,00 de faturamento (hoje e total), pagando uma cobrança de verdade.
     const app = buildServer(h.deps);
     await app.inject({ method: 'POST', url: EVO, payload: upsert({ id: 'm1', text: 'Vi o anúncio', ad: true }) });
     await app.settled();
@@ -148,7 +148,7 @@ describe('gasto em anúncios e lucro no painel', () => {
     await app.settled();
     return app;
   }
-  const script = [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Leitura.')];
+  const script = [agentJson('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Leitura.')];
 
   it('dado recente: status ok com valores e lucro = faturamento - gasto (em BRL)', async () => {
     const h = makeHarness({ llm: script });
@@ -158,7 +158,7 @@ describe('gasto em anúncios e lucro no painel', () => {
     const body = await stats(app);
 
     expect(body.spend).toMatchObject({ status: 'ok', totalCents: 1_000, todayCents: 500, currency: 'BRL' });
-    expect(body.profit).toEqual({ totalCents: 2_900 - 1_000, todayCents: 2_900 - 500 });
+    expect(body.profit).toEqual({ totalCents: 2_500 - 1_000, todayCents: 2_500 - 500 });
   });
 
   it('lucro pode ser negativo (gastou mais do que faturou)', async () => {

@@ -54,7 +54,7 @@ describe('F4: eco do bot reconhecido pelo id, não só pelo tempo', () => {
 });
 
 describe('F3: leitura paga não se perde quando o envio falha', () => {
-  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Uma leitura bonita.')];
+  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Uma leitura bonita.')];
 
   it('envio falha na primeira vez, a repetição do webhook reentrega uma única vez', async () => {
     const h = makeHarness({ llm: script });
@@ -102,7 +102,7 @@ describe('F12: mensagens antigas', () => {
 });
 
 describe('janela de 24 h na entrega da leitura', () => {
-  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' }), ok('Uma leitura bonita.')];
+  const script = [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' }), ok('Uma leitura bonita.')];
 
   async function paidAfter(hoursLater: number) {
     const h = makeHarness({ llm: script });
@@ -141,7 +141,7 @@ describe('ritmo humano nas respostas', () => {
   });
 
   it('o código de Pix colado vai com atraso curto, o texto longo com atraso maior', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })] });
+    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' })] });
     await leadFirstMessage(h);
 
     const [intro, code] = h.sent;
@@ -151,7 +151,7 @@ describe('ritmo humano nas respostas', () => {
 
   it('espera um tempo "pensando" ANTES da primeira mensagem, uma vez só por resposta', async () => {
     const h = makeHarness({
-      llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })],
+      llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' })],
       config: { replyThinkSeconds: 14 },
     });
     await leadFirstMessage(h);
@@ -182,7 +182,7 @@ describe('ritmo humano nas respostas', () => {
 
   it('acima do limite por minuto por conversa, o envio espera em vez de disparar tudo junto', async () => {
     const h = makeHarness({
-      llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })],
+      llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' })],
       config: { maxMsgsPerMinuteChat: 2 },
     });
     await leadFirstMessage(h);
@@ -215,7 +215,7 @@ describe('grupos: nunca respondem', () => {
   it('defesa no envio: cobrança ligada a um jid de grupo, mesmo paga, não envia nada e avisa o dono', async () => {
     const h = makeHarness({ llm: [ok('Uma leitura.')] });
     const app = buildServer(h.deps);
-    const charge = await openCharge({ store: h.store, pix: h.pix }, GROUP, 'tiragem-3-cartas');
+    const charge = await openCharge({ store: h.store, pix: h.pix }, GROUP, 'tiragem-intermediaria');
     h.pix.simulatePayment(charge.chargeId);
 
     await fire(h, app, PIX, { chargeId: charge.chargeId });
@@ -229,7 +229,7 @@ describe('grupos: nunca respondem', () => {
     async (jid) => {
       const h = makeHarness({ llm: [ok('Uma leitura.')] });
       const app = buildServer(h.deps);
-      const charge = await openCharge({ store: h.store, pix: h.pix }, jid, 'tiragem-3-cartas');
+      const charge = await openCharge({ store: h.store, pix: h.pix }, jid, 'tiragem-intermediaria');
       h.pix.simulatePayment(charge.chargeId);
 
       await fire(h, app, PIX, { chargeId: charge.chargeId });
@@ -251,7 +251,7 @@ describe('nenhuma mensagem proativa', () => {
   });
 
   it('contato comum, grupo, dono falando e pagamento pendente não geram envio', async () => {
-    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-3-cartas' })] });
+    const h = makeHarness({ llm: [agentJson('Segue o Pix!', { kind: 'charge', itemId: 'tiragem-intermediaria' })] });
     const app = await leadFirstMessage(h);
     const chargeId = h.store.getConversation(JID)!.openChargeId!;
     const before = h.sent.length;

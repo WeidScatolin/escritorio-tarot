@@ -59,9 +59,9 @@ describe('parseAgentOutput', () => {
   });
 
   it('aceita ação charge com itemId', () => {
-    expect(parseAgentOutput('{"reply":"Segue","action":{"kind":"charge","itemId":"tiragem-3-cartas"}}')).toEqual({
+    expect(parseAgentOutput('{"reply":"Segue","action":{"kind":"charge","itemId":"tiragem-intermediaria"}}')).toEqual({
       reply: 'Segue',
-      action: { kind: 'charge', itemId: 'tiragem-3-cartas' },
+      action: { kind: 'charge', itemId: 'tiragem-intermediaria' },
     });
   });
 
@@ -102,16 +102,16 @@ describe('guardReply', () => {
 
 describe('handleLead', () => {
   it('ação charge válida: cria cobrança com o valor do catálogo e envia o Pix', async () => {
-    const llm = fakeLlm([json('Perfeito! Vou te mandar o Pix.', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
+    const llm = fakeLlm([json('Perfeito! Vou te mandar o Pix.', { kind: 'charge', itemId: 'tiragem-intermediaria' })]);
     const result = await handleLead(deps(llm.client), inbound('quero a tiragem de 3 cartas'));
 
     const text = result.replies.join('\n');
-    expect(text).toContain('R$ 29,00');
+    expect(text).toContain('R$ 25,00');
     expect(text).toContain('FAKE');
     const conversation = store.getConversation(JID)!;
     expect(conversation.stage).toBe('awaiting_payment');
     const charge = store.getCharge(conversation.openChargeId!)!;
-    expect(charge.amountCents).toBe(2900);
+    expect(charge.amountCents).toBe(2500);
     expect(charge.status).toBe('pending');
     expect(llm.calls).toHaveLength(1);
   });
@@ -145,7 +145,7 @@ describe('handleLead', () => {
   });
 
   it('cobrança de um item com valor de outro item na resposta é barrada', async () => {
-    const llm = fakeLlm([json('Fica R$ 49,00 a tiragem de 3 cartas.', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
+    const llm = fakeLlm([json('Fica R$ 49,00 a tiragem de 3 cartas.', { kind: 'charge', itemId: 'tiragem-intermediaria' })]);
     const result = await handleLead(deps(llm.client), inbound('quero a de 3 cartas'));
 
     expect(result.notifyOwner).toBeDefined();
@@ -153,7 +153,7 @@ describe('handleLead', () => {
   });
 
   it('"já paguei" com cobrança aberta: não chama a IA e a cobrança continua pendente', async () => {
-    const llm = fakeLlm([json('Fechado!', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
+    const llm = fakeLlm([json('Fechado!', { kind: 'charge', itemId: 'tiragem-intermediaria' })]);
     await handleLead(deps(llm.client), inbound('quero a de 3 cartas'));
     const chargeId = store.getConversation(JID)!.openChargeId!;
     const callsBefore = llm.calls.length;
@@ -166,7 +166,7 @@ describe('handleLead', () => {
   });
 
   it('segundo pedido do mesmo item com cobrança pendente não cria outro Pix e REENVIA o mesmo copia e cola', async () => {
-    const llm = fakeLlm([json('Segue!', { kind: 'charge', itemId: 'tiragem-3-cartas' })]);
+    const llm = fakeLlm([json('Segue!', { kind: 'charge', itemId: 'tiragem-intermediaria' })]);
     const first = await handleLead(deps(llm.client), inbound('quero a de 3 cartas'));
     const firstId = store.getConversation(JID)!.openChargeId;
     const copyPaste = first.replies[1]!;
@@ -219,7 +219,7 @@ describe('deliverReading', () => {
       openChargeId: null,
       stage: 'awaiting_payment',
     });
-    const charge = await openCharge({ store, pix }, JID, 'tiragem-3-cartas');
+    const charge = await openCharge({ store, pix }, JID, 'tiragem-intermediaria');
     return charge;
   }
 

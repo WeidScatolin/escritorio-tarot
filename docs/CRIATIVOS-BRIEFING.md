@@ -10,11 +10,12 @@ Documento para colar em outra IA (texto, imagem ou vídeo) e gerar os criativos 
 ## 1. A oferta
 
 - **O que é:** leitura de tarot feita por uma assistente de IA, direto no WhatsApp. A pessoa clica no anúncio, a conversa abre no WhatsApp, as cartas são tiradas na hora e a leitura chega na conversa.
-- **Produtos e preços** (⚠️ valores provisórios, confirmar antes de publicar):
+- **Produtos e preços:**
   | Produto | Preço |
   |---|---|
-  | Tiragem de 3 cartas | R$ 29,00 |
-  | Tiragem completa | R$ 49,00 |
+  | Tiragem básica (1 carta) | R$ 15,00 |
+  | Tiragem intermediária (3 cartas: passado, presente e futuro) | R$ 25,00 |
+  | Tiragem completa (5 cartas, com conselho final) | R$ 35,00 |
 - **Como paga:** Pix, com o código copia-e-cola enviado na própria conversa. A leitura só é feita depois que o pagamento é confirmado.
 - **Sem desconto e sem negociação.** Não prometa promoção, cupom ou "grátis".
 - **Atendimento:** na hora, pelo WhatsApp, sem cadastro, sem baixar app, sem ligação.

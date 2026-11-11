@@ -8,7 +8,7 @@ import { createStore, type Charge } from '../src/store.js';
 const base: Charge = {
   chargeId: 'c1',
   jid: 'a@s.whatsapp.net',
-  itemId: 'tiragem-3-cartas',
+  itemId: 'tiragem-intermediaria',
   amountCents: 2900,
   status: 'pending',
   cards: null,
@@ -79,7 +79,7 @@ describe('cobrança: horário do pagamento', () => {
         charge_id TEXT PRIMARY KEY, jid TEXT NOT NULL, item_id TEXT NOT NULL,
         amount_cents INTEGER NOT NULL, status TEXT NOT NULL, cards TEXT
       );
-      INSERT INTO charges VALUES ('velha', 'a@s.whatsapp.net', 'tiragem-3-cartas', 2900, 'paid', NULL);`);
+      INSERT INTO charges VALUES ('velha', 'a@s.whatsapp.net', 'tiragem-intermediaria', 2900, 'paid', NULL);`);
       old.close();
 
       const store = createStore(path);
@@ -170,7 +170,7 @@ describe('migração de banco antigo (sem as colunas novas)', () => {
       charge_id TEXT PRIMARY KEY, jid TEXT NOT NULL, item_id TEXT NOT NULL,
       amount_cents INTEGER NOT NULL, status TEXT NOT NULL, cards TEXT
     );
-    INSERT INTO charges VALUES ('velha', 'a@s.whatsapp.net', 'tiragem-3-cartas', 2900, 'pending', NULL);`);
+    INSERT INTO charges VALUES ('velha', 'a@s.whatsapp.net', 'tiragem-intermediaria', 2900, 'pending', NULL);`);
     old.close();
 
     const store = createStore(path);
