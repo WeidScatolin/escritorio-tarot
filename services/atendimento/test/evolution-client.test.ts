@@ -73,3 +73,44 @@ describe('createEvolutionClient.sendText', () => {
     expect((error as Error).message).not.toContain(API_KEY);
   });
 });
+
+describe('createEvolutionClient.sendMedia', () => {
+  const media = { base64: 'QUJD', mimetype: 'image/jpeg', fileName: '00.jpg', caption: 'Passado — O Louco' };
+
+  it('faz POST em /message/sendMedia/{instancia} com imagem em base64 e legenda', async () => {
+    const { fetchImpl, calls } = fakeFetch(201, { key: { id: 'M1' } });
+    const client = createEvolutionClient({ baseUrl: 'http://evo:8080/', apiKey: API_KEY, instance: 'tarot', fetchImpl });
+
+    const result = await client.sendMedia('a@s.whatsapp.net', media, { delayMs: 1800 });
+
+    expect(result).toEqual({ messageId: 'M1' });
+    expect(calls[0]!.url).toBe('http://evo:8080/message/sendMedia/tarot');
+    expect((calls[0]!.init.headers as Record<string, string>).apikey).toBe(API_KEY);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      number: 'a@s.whatsapp.net',
+      mediatype: 'image',
+      mimetype: 'image/jpeg',
+      media: 'QUJD',
+      fileName: '00.jpg',
+      caption: 'Passado — O Louco',
+      delay: 1800,
+    });
+  });
+
+  it('erro não 2xx lança sem vazar a apikey', async () => {
+    const { fetchImpl } = fakeFetch(500, { error: API_KEY });
+    const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });
+    const error = await client.sendMedia('a@s.whatsapp.net', media).catch((e: Error) => e);
+    expect((error as Error).message).toContain('500');
+    expect((error as Error).message).not.toContain(API_KEY);
+  });
+
+  it('falha de rede lança sem vazar a apikey', async () => {
+    const fetchImpl = (async () => {
+      throw new Error(`apikey=${API_KEY}`);
+    }) as typeof fetch;
+    const client = createEvolutionClient({ baseUrl: 'http://evo', apiKey: API_KEY, instance: 'tarot', fetchImpl });
+    const error = await client.sendMedia('a@s.whatsapp.net', media).catch((e: Error) => e);
+    expect((error as Error).message).not.toContain(API_KEY);
+  });
+});

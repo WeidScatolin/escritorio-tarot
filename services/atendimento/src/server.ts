@@ -1,17 +1,23 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { basename } from 'node:path';
+import { buildDeliveryMedia, type DeliveryMedia } from './cards.js';
+import { getItem } from './catalog.js';
 import { deliverReading, handleLead, markDelivered, type AgentDeps } from './agent.js';
 import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
 import { parseWebhook } from './evolution/parse.js';
+import { createDebouncer } from './debounce.js';
 import { decide } from './filter.js';
 import { createRateLimiter, thinkDelayMs, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PixProvider } from './pix/provider.js';
 import type { AdSpendRecord, Store } from './store.js';
+import type { TtsClient } from './tts/types.js';
 import type { InboundMessage } from './types.js';
 
 declare module 'fastify' {
@@ -27,10 +33,14 @@ export type ServerDeps = {
   llm: LlmClient;
   pix: PixProvider;
   evolution: EvolutionClient;
+  /** Síntese de voz da leitura. Ausente = tudo em texto (mesmo se config.tts estiver ligado). */
+  tts?: TtsClient;
   now: () => number;
   /** Espera de verdade em produção; nos testes é simulada. */
   sleep?: (ms: number) => Promise<void>;
   rng?: () => number;
+  /** Pasta assets/ (shuffling.jpg e cards/NN.jpg). Sem ela, a entrega é só texto. */
+  assetsDir?: string;
   notifyOwner: (text: string) => void | Promise<void>;
 };
 
@@ -44,6 +54,7 @@ const NOTICES_LIMIT = 50;
 // Janela de 24 h da API oficial do WhatsApp, respeitada por conta própria (pronta para uma troca futura).
 const WINDOW_24H_MS = 24 * 3_600_000;
 const RATE_WINDOW_MS = 60_000;
+const VOICE_MAX_DELAY_MS = 10_000;
 
 // Só conversas individuais recebem mensagem. Grupos, status, canais etc. nunca.
 function isIndividualChat(jid: string): boolean {
@@ -84,6 +95,18 @@ function sameToken(given: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+// Várias mensagens seguidas viram uma só (textos em linhas; áudios e figuras sem texto são ignorados
+// quando há texto). Os demais campos vêm da última mensagem; a marca de anúncio, da primeira que tiver.
+function mergeBatch(batch: InboundMessage[]): InboundMessage {
+  const last = batch[batch.length - 1]!;
+  const texts = batch.map((m) => m.text?.trim() ?? '').filter((t) => t.length > 0);
+  return {
+    ...last,
+    text: texts.length > 0 ? texts.join('\n') : null,
+    adReferral: batch.find((m) => m.adReferral !== null)?.adReferral ?? null,
+  };
+}
+
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const blocklist = new Set(deps.config.blocklist);
@@ -95,6 +118,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     ...(deps.rng ? { rng: deps.rng } : {}),
   };
 
+  const debouncer = createDebouncer<InboundMessage>({
+    waitMs: deps.config.messageDebounceSeconds * 1000,
+    onFlush: (jid, batch) => enqueue(jid, () => processBatch(jid, batch)),
+  });
   const queues = new Map<string, Promise<void>>();
   const pending = new Set<Promise<void>>();
   let processing = 0;
@@ -146,8 +173,29 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
   }
 
-  // Devolve true só se TODAS as mensagens foram enviadas.
-  async function sendAll(jid: string, texts: string[]): Promise<boolean> {
+  // Imagem opcional: falha (arquivo ausente, envio recusado) devolve false e nunca trava a entrega.
+  async function sendImage(jid: string, image: { path: string | null; caption: string }): Promise<boolean> {
+    if (!image.path) return false;
+    try {
+      const base64 = (await readFile(image.path)).toString('base64');
+      await limiter.acquire(jid);
+      const typing = typingDelayMs(image.caption, Math.random, { perCharMs: deps.config.typingMsPerChar });
+      const { messageId } = await deps.evolution.sendMedia(
+        jid,
+        { base64, mimetype: 'image/jpeg', fileName: basename(image.path), caption: image.caption },
+        { delayMs: typing },
+      );
+      if (messageId) deps.store.markSeen(messageId);
+      else botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Devolve true só se TODAS as mensagens de texto foram enviadas. As imagens (opcionais) vão antes;
+  // se todas as cartas foram como imagem, o cabeçalho em texto (primeira resposta) é dispensado.
+  async function sendAll(jid: string, texts: string[], media?: DeliveryMedia): Promise<boolean> {
     if (!isIndividualChat(jid)) {
       await safeNotify(`Envio recusado: ${jid} não é uma conversa individual (grupos e canais nunca recebem resposta).`);
       return false;
@@ -159,7 +207,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // "Lendo e pensando": espera antes de começar (sem aparecer "digitando"), uma vez por resposta.
       const think = thinkDelayMs(deps.config.replyThinkSeconds);
       if (think > 0) await (deps.sleep ?? realSleep)(think);
-      for (const text of texts) {
+      let toSend = texts;
+      if (media) {
+        if (media.shuffling) await sendImage(jid, media.shuffling);
+        let cardsSent = 0;
+        for (const card of media.cards) if (await sendImage(jid, card)) cardsSent += 1;
+        if (cardsSent < media.cards.length) {
+          await safeNotify(`Imagens das cartas indisponíveis (${media.cards.length - cardsSent}) no chat ${jid}; seguiu em texto.`);
+        } else if (texts.length > 1) {
+          toSend = texts.slice(1);
+        }
+      }
+      for (const text of toSend) {
         try {
           await limiter.acquire(jid);
           const typing = typingDelayMs(text, Math.random, { perCharMs: deps.config.typingMsPerChar });
@@ -177,6 +236,52 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
     if (missingId) botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
     return allSent;
+  }
+
+  // Nota de voz com o mesmo ritmo e limites do texto. Devolve false em qualquer falha (TTS ou envio):
+  // o chamador cai para texto. Nunca lança.
+  async function sendVoice(jid: string, text: string): Promise<boolean> {
+    if (!deps.tts || !isIndividualChat(jid)) return false;
+    let audio: Buffer;
+    try {
+      audio = await deps.tts.synthesize(text);
+    } catch {
+      await safeNotify('Falha ao gerar o áudio da leitura (TTS); enviando em texto.');
+      return false;
+    }
+    sending.add(jid);
+    let missingId = false;
+    try {
+      await limiter.acquire(jid);
+      // "Gravando áudio..." por um tempo proporcional ao texto (mais curto que digitar), com teto.
+      const recording = Math.min(
+        VOICE_MAX_DELAY_MS,
+        typingDelayMs(text, Math.random, { perCharMs: Math.round(deps.config.typingMsPerChar / 3) }),
+      );
+      const { messageId } = await deps.evolution.sendAudio(jid, audio, { delayMs: recording });
+      if (messageId) deps.store.markSeen(messageId);
+      else missingId = true;
+    } catch {
+      await safeNotify(`Falha ao enviar o áudio para ${jid}; enviando em texto.`);
+      return false;
+    } finally {
+      sending.delete(jid);
+    }
+    if (missingId) botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+    return true;
+  }
+
+  // Entrega da leitura: com TTS ligado, as cartas seguem em texto e a interpretação vai em nota de voz.
+  // Se o áudio falhar em qualquer ponto, a interpretação é enviada em texto.
+  async function deliverReplies(jid: string, replies: string[], media?: DeliveryMedia): Promise<boolean> {
+    const [header, interpretation, ...rest] = replies;
+    if (!deps.config.tts || !deps.tts || header === undefined || interpretation === undefined) {
+      return sendAll(jid, replies, media);
+    }
+    if (!(await sendAll(jid, [header], media))) return false;
+    // Depois da interpretação (voz ou, se falhar, texto) seguem as demais mensagens, como a despedida.
+    if (!(await sendVoice(jid, interpretation)) && !(await sendAll(jid, [interpretation]))) return false;
+    return rest.length === 0 ? true : sendAll(jid, rest);
   }
 
   function handleOwnerMessage(msg: InboundMessage): void {
@@ -199,16 +304,35 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       handleOwnerMessage(msg);
       return;
     }
+    // Chat com mensagens aguardando silêncio já é um lead engajado, mesmo sem conversa gravada ainda.
+    const buffered = debouncer.has(msg.jid);
     const decision = decide(msg, {
-      conversation: deps.store.getConversation(msg.jid),
+      conversation:
+        deps.store.getConversation(msg.jid) ??
+        (buffered ? { jid: msg.jid, mode: 'ai', engagedAt: deps.now(), openChargeId: null, stage: 'greeting' } : null),
       triggerPhrases: deps.config.triggerPhrases,
       blocklist,
     });
     if (!decision.engage) return;
+    debouncer.push(msg.jid, msg);
+  }
 
+  // Depois do silêncio: junta o que o cliente escreveu e responde uma única vez.
+  async function processBatch(jid: string, batch: InboundMessage[]): Promise<void> {
+    // O dono pode ter assumido (ou o número ter sido bloqueado) durante a espera.
+    if (blocklist.has(jid) || deps.store.getConversation(jid)?.mode === 'human') return;
+    const msg = mergeBatch(batch);
     const result = await handleLead(agentDeps, msg);
-    await sendAll(msg.jid, result.replies);
+    await sendAll(jid, result.replies);
     if (result.notifyOwner) await safeNotify(result.notifyOwner);
+  }
+
+  // Cartas gravadas na cobrança (a reentrega usa as mesmas) viram imagens; sem assetsDir, só texto.
+  function deliveryMedia(chargeId: string): DeliveryMedia | undefined {
+    if (!deps.assetsDir) return undefined;
+    const charge = deps.store.getCharge(chargeId);
+    if (!charge?.cards) return undefined;
+    return buildDeliveryMedia(deps.assetsDir, charge.cards, getItem(charge.itemId)?.positions ?? []);
   }
 
   async function processPayment(chargeId: string): Promise<void> {
@@ -232,8 +356,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       );
     }
     // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
-    if (await sendAll(charge.jid, replies)) markDelivered(deps.store, chargeId);
+    if (await deliverReplies(charge.jid, replies, deliveryMedia(chargeId))) markDelivered(deps.store, chargeId);
   }
+
+  app.addHook('onClose', async () => debouncer.clear());
 
   app.decorate('settled', async () => {
     while (pending.size > 0) await Promise.all([...pending]);
