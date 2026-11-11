@@ -19,7 +19,8 @@ export type NimClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
-const MAX_TOKENS = 400;
+// Folga para leituras de 5 cartas e para o caso de o modelo gastar tokens antes da resposta.
+const MAX_TOKENS = 900;
 const TEMPERATURE = 0.3;
 const HTTP_CONTENT_FILTERED = 422;
 const HTTP_NOT_FOUND = 404;
@@ -48,7 +49,9 @@ async function readResponse(response: Response): Promise<LlmResult> {
   return text === null ? UNAVAILABLE : { kind: 'ok', text };
 }
 
-const rejectsTemperature = (model: string): boolean => /(^|\/)claude/i.test(model);
+// Claude recusa `temperature` (HTTP 400) e, com o raciocínio ligado, gasta o limite de tokens pensando e devolve
+// conteúdo vazio: nesses modelos o raciocínio é desligado.
+const isClaude = (model: string): boolean => /(^|\/)claude/i.test(model);
 
 export function createNimClient(opts: NimClientOptions): LlmClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -73,7 +76,7 @@ export function createNimClient(opts: NimClientOptions): LlmClient {
             messages: [{ role: 'system', content: input.system }, ...input.messages],
             max_tokens: MAX_TOKENS,
             // Os modelos Claude recentes recusam `temperature` (HTTP 400): nesses, o parâmetro é omitido.
-            ...(rejectsTemperature(opts.model) ? {} : { temperature: TEMPERATURE }),
+            ...(isClaude(opts.model) ? { thinking: { type: 'disabled' } } : { temperature: TEMPERATURE }),
           }),
           signal: controller.signal,
         });

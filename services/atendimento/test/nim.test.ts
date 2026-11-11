@@ -55,7 +55,7 @@ describe('createNimClient', () => {
     expect(call.init.method).toBe('POST');
     const body = JSON.parse(call.init.body as string);
     expect(body.model).toBe('google/gemma-4-31b-it');
-    expect(body.max_tokens).toBe(400);
+    expect(body.max_tokens).toBe(900);
     expect(body.temperature).toBe(0.3);
     expect(body.messages).toEqual([
       { role: 'system', content: INPUT.system },
@@ -149,7 +149,16 @@ describe('modelos Claude', () => {
     await client.complete(INPUT);
     const body = JSON.parse(String(calls[0]!.init.body));
     expect(body).not.toHaveProperty('temperature');
+    expect(body.thinking).toEqual({ type: 'disabled' });
     expect(body.model).toBe('claude-haiku-5-5');
-    expect(body.max_tokens).toBe(400);
+    expect(body.max_tokens).toBe(900);
+  });
+});
+
+describe('modelos que não são Claude', () => {
+  it('não mandam o campo thinking', async () => {
+    const { fetchImpl, calls } = recordingFetch(() => jsonResponse(200, { choices: [{ message: { content: 'oi' } }] }));
+    await makeClient(fetchImpl).complete(INPUT);
+    expect(JSON.parse(String(calls[0]!.init.body))).not.toHaveProperty('thinking');
   });
 });
