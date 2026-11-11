@@ -2,6 +2,7 @@ import type { Config } from '../src/config.js';
 import type { EvolutionClient } from '../src/evolution/client.js';
 import type { LlmClient, LlmResult } from '../src/llm/nim.js';
 import { createFakePix } from '../src/pix/fake.js';
+import { createFakeTts } from '../src/tts/fake.js';
 import type { ServerDeps } from '../src/server.js';
 import { createStore } from '../src/store.js';
 
@@ -46,6 +47,7 @@ export type Harness = ReturnType<typeof makeHarness>;
 export function makeHarness(
   opts: { llm?: LlmResult[]; config?: Partial<Config>; sendFails?: boolean; sendReturnsNoId?: boolean } = {},
 ) {
+  const audioSent: { jid: string; bytes: Buffer; messageId: string | null; delayMs: number | undefined }[] = [];
   const sent: { jid: string; text: string; messageId: string | null; delayMs: number | undefined }[] = [];
   const sentMedia: { jid: string; fileName: string; caption: string | undefined; delayMs: number | undefined }[] = [];
   const order: string[] = [];
@@ -53,7 +55,7 @@ export function makeHarness(
   const notices: string[] = [];
   const llmCalls: { system: string; messages: { role: string; content: string }[] }[] = [];
   const clock = { t: T0 };
-  const flags = { sendFails: opts.sendFails ?? false, mediaFails: false };
+  const flags = { sendFails: opts.sendFails ?? false, mediaFails: false, audioFails: false };
   const results = opts.llm ?? [agentJson('Oi!')];
   let counter = 0;
 
@@ -79,7 +81,15 @@ export function makeHarness(
       order.push(`media:${media.fileName}`);
       return { messageId: `sent-${counter}` };
     },
+    async sendAudio(jid, bytes, sendOpts) {
+      if (flags.audioFails) throw new Error(`boom apikey=${API_KEY}`);
+      counter += 1;
+      const messageId = `sent-${counter}`;
+      audioSent.push({ jid, bytes, messageId, delayMs: sendOpts?.delayMs });
+      return { messageId };
+    },
   };
+  const tts = createFakeTts();
 
   const store = createStore(':memory:');
   const pix = createFakePix();
@@ -89,6 +99,7 @@ export function makeHarness(
     llm,
     pix,
     evolution,
+    ...(opts.config?.tts ? { tts } : {}),
     now: () => clock.t,
     // Espera simulada: registra e avança o relógio falso, sem esperar de verdade.
     sleep: async (ms) => {
@@ -99,7 +110,7 @@ export function makeHarness(
       notices.push(text);
     },
   };
-  return { deps, sent, sentMedia, order, sleeps, notices, llmCalls, clock, flags, store, pix };
+  return { deps, sent, sentMedia, order, audioSent, tts, sleeps, notices, llmCalls, clock, flags, store, pix };
 }
 
 export function upsert(o: {

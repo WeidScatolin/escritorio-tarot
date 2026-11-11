@@ -17,6 +17,7 @@ import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PixProvider } from './pix/provider.js';
 import type { AdSpendRecord, Store } from './store.js';
+import type { TtsClient } from './tts/types.js';
 import type { InboundMessage } from './types.js';
 
 declare module 'fastify' {
@@ -32,6 +33,8 @@ export type ServerDeps = {
   llm: LlmClient;
   pix: PixProvider;
   evolution: EvolutionClient;
+  /** Síntese de voz da leitura. Ausente = tudo em texto (mesmo se config.tts estiver ligado). */
+  tts?: TtsClient;
   now: () => number;
   /** Espera de verdade em produção; nos testes é simulada. */
   sleep?: (ms: number) => Promise<void>;
@@ -51,6 +54,7 @@ const NOTICES_LIMIT = 50;
 // Janela de 24 h da API oficial do WhatsApp, respeitada por conta própria (pronta para uma troca futura).
 const WINDOW_24H_MS = 24 * 3_600_000;
 const RATE_WINDOW_MS = 60_000;
+const VOICE_MAX_DELAY_MS = 10_000;
 
 // Só conversas individuais recebem mensagem. Grupos, status, canais etc. nunca.
 function isIndividualChat(jid: string): boolean {
@@ -234,6 +238,52 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return allSent;
   }
 
+  // Nota de voz com o mesmo ritmo e limites do texto. Devolve false em qualquer falha (TTS ou envio):
+  // o chamador cai para texto. Nunca lança.
+  async function sendVoice(jid: string, text: string): Promise<boolean> {
+    if (!deps.tts || !isIndividualChat(jid)) return false;
+    let audio: Buffer;
+    try {
+      audio = await deps.tts.synthesize(text);
+    } catch {
+      await safeNotify('Falha ao gerar o áudio da leitura (TTS); enviando em texto.');
+      return false;
+    }
+    sending.add(jid);
+    let missingId = false;
+    try {
+      await limiter.acquire(jid);
+      // "Gravando áudio..." por um tempo proporcional ao texto (mais curto que digitar), com teto.
+      const recording = Math.min(
+        VOICE_MAX_DELAY_MS,
+        typingDelayMs(text, Math.random, { perCharMs: Math.round(deps.config.typingMsPerChar / 3) }),
+      );
+      const { messageId } = await deps.evolution.sendAudio(jid, audio, { delayMs: recording });
+      if (messageId) deps.store.markSeen(messageId);
+      else missingId = true;
+    } catch {
+      await safeNotify(`Falha ao enviar o áudio para ${jid}; enviando em texto.`);
+      return false;
+    } finally {
+      sending.delete(jid);
+    }
+    if (missingId) botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+    return true;
+  }
+
+  // Entrega da leitura: com TTS ligado, as cartas seguem em texto e a interpretação vai em nota de voz.
+  // Se o áudio falhar em qualquer ponto, a interpretação é enviada em texto.
+  async function deliverReplies(jid: string, replies: string[], media?: DeliveryMedia): Promise<boolean> {
+    const [header, interpretation, ...rest] = replies;
+    if (!deps.config.tts || !deps.tts || header === undefined || interpretation === undefined) {
+      return sendAll(jid, replies, media);
+    }
+    if (!(await sendAll(jid, [header], media))) return false;
+    // Depois da interpretação (voz ou, se falhar, texto) seguem as demais mensagens, como a despedida.
+    if (!(await sendVoice(jid, interpretation)) && !(await sendAll(jid, [interpretation]))) return false;
+    return rest.length === 0 ? true : sendAll(jid, rest);
+  }
+
   function handleOwnerMessage(msg: InboundMessage): void {
     const conversation = deps.store.getConversation(msg.jid);
     if (!conversation) return;
@@ -306,7 +356,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       );
     }
     // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
-    if (await sendAll(charge.jid, replies, deliveryMedia(chargeId))) markDelivered(deps.store, chargeId);
+    if (await deliverReplies(charge.jid, replies, deliveryMedia(chargeId))) markDelivered(deps.store, chargeId);
   }
 
   app.addHook('onClose', async () => debouncer.clear());

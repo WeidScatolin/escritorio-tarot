@@ -11,6 +11,8 @@ export type EvolutionClient = {
   sendText(jid: string, text: string, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
   /** Envia uma imagem com legenda opcional. Mesmo contrato de erro e de id do sendText. */
   sendMedia(jid: string, media: MediaPayload, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
+  /** Nota de voz (PTT) via sendWhatsAppAudio da Evolution v2. `audio` = bytes ogg/opus. */
+  sendAudio(jid: string, audio: Buffer, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
 };
 
 export type EvolutionClientOptions = {
@@ -74,6 +76,15 @@ export function createEvolutionClient(opts: EvolutionClientOptions): EvolutionCl
         ...(delayMs ? { delay: delayMs } : {}),
       };
       return post(endpoint('sendMedia'), body, delayMs);
+    },
+
+    // Evolution v2 (SendAudioDto): `audio` aceita URL ou base64 puro (sem prefixo data:). `encoding: true`
+    // pede que a Evolution reconverta para PTT; `delay` mostra "gravando áudio..." pelo tempo informado.
+    // Formato do payload conferido só na documentação/fonte oficial: ainda NÃO testado contra uma instância real.
+    sendAudio(jid, audio, sendOpts) {
+      const delayMs = delayOf(sendOpts);
+      const body = { number: jid, audio: audio.toString('base64'), encoding: true, ...(delayMs ? { delay: delayMs } : {}) };
+      return post(endpoint('sendWhatsAppAudio'), body, delayMs);
     },
   };
 }

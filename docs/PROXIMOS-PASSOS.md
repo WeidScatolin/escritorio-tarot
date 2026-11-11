@@ -19,8 +19,8 @@ Estado do projeto e o que falta. Leia junto com `docs/ROADMAP.md` e `docs/CONTEX
 - Imagens são Rider-Waite-Smith de 1909 (domínio público), da Wikimedia Commons.
 
 ### 2. Áudio (TTS)
-- Escolha do usuário: `rany2/edge-tts` (vozes neurais da Microsoft, pt-BR Francisca/Thalita, grátis, API não oficial). Reserva local: `OHF-Voice/piper1-gpl`.
-- Precisa de `ffmpeg` (NÃO instalado) para converter para ogg/opus (nota de voz). Verificar o endpoint de áudio da Evolution (`sendWhatsAppAudio`), ainda não testado.
+- **Implementado, desligado por padrão** (`TTS_ENABLED=true`, voz em `TTS_VOICE`): `src/tts/` (edge-tts via npm + ffmpeg na imagem Docker), `EvolutionClient.sendAudio` e entrega da interpretação em nota de voz com fallback para texto. Justificativa no README do serviço.
+- Falta: reconstruir a imagem (`docker compose build atendimento`, instala o ffmpeg) e testar `sendWhatsAppAudio` contra a Evolution real depois do QR (payload conferido só na documentação). Reserva local se a API da Microsoft cair: `OHF-Voice/piper1-gpl`.
 
 ### 3. Pix real
 - Recomendação: Mercado Pago (conta de teste primeiro). Alternativas: Asaas, Woovi, EFI. InfinitePay foi rejeitada (sem copia-e-cola por API).
