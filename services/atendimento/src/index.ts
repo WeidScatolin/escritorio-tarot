@@ -8,6 +8,7 @@ import { createNimClient } from './llm/nim.js';
 import { startPublisher } from './publish.js';
 import { createFakePix } from './pix/fake.js';
 import { buildServer } from './server.js';
+import { createEdgeTts } from './tts/edge.js';
 import { createStore } from './store.js';
 
 if (existsSync('.env')) {
@@ -37,6 +38,7 @@ try {
       apiKey: config.evolutionApiKey,
       instance: config.instance,
     }),
+    ...(config.tts ? { tts: createEdgeTts({ voice: config.tts.voice }) } : {}),
     now: Date.now,
     notifyOwner: (text) => console.warn(`[AVISO AO DONO] ${text}`),
   });

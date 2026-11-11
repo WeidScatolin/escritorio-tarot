@@ -32,7 +32,11 @@ export type Config = {
   adSpendPollMinutes: number;
   /** Envio do resumo do painel para a Vercel. null = desligado. */
   publish: PublishConfig | null;
+  /** Leitura em áudio (nota de voz). null/ausente = desligado (tudo em texto). */
+  tts?: TtsConfig | null;
 };
+
+export type TtsConfig = { voice: string };
 
 export type PublishConfig = { url: string; secret: string; intervalSeconds: number };
 
@@ -107,6 +111,18 @@ function readPublish(env: Record<string, string | undefined>): PublishConfig | n
   return { url, secret, intervalSeconds: readPositiveInt(env, 'PUBLISH_INTERVAL_SECONDS', 60) };
 }
 
+// Desligado por padrão. Voz neural da Microsoft (ex.: pt-BR-FranciscaNeural, pt-BR-ThalitaNeural).
+function readTts(env: Record<string, string | undefined>): TtsConfig | null {
+  const flag = env.TTS_ENABLED?.trim().toLowerCase() ?? '';
+  if (flag === '' || flag === 'false' || flag === '0') return null;
+  if (flag !== 'true' && flag !== '1') throw new ConfigError('TTS_ENABLED inválida: use true ou false');
+  const voice = env.TTS_VOICE?.trim() || 'pt-BR-FranciscaNeural';
+  if (!/^[a-z]{2,3}-[A-Z]{2}-[A-Za-z]+Neural$/.test(voice)) {
+    throw new ConfigError('TTS_VOICE inválida: use algo como pt-BR-FranciscaNeural');
+  }
+  return { voice };
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const missing = REQUIRED.filter((name) => !env[name]?.trim());
   if (missing.length > 0) {
@@ -137,5 +153,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     meta: readMeta(env),
     adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
     publish: readPublish(env),
+    tts: readTts(env),
   };
 }

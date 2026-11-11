@@ -31,6 +31,15 @@ Abra no navegador do PC: `http://localhost:3100/painel/<WEBHOOK_TOKEN>` (o token
 - **Gasto em anúncios e lucro:** vêm da API da Meta (ver variáveis `META_*`). Sem elas, aparecem como "—" e a tela diz que a leitura está desligada. O lucro líquido é faturamento menos esse gasto, só quando o gasto está fresco e em BRL.
 - Com o Pix falso de hoje o faturamento fica em zero.
 
+## Leitura em áudio (TTS, desligado por padrão)
+
+Com `TTS_ENABLED=true`, depois do pagamento as cartas seguem em texto e a **interpretação** vai como nota de voz pt-BR. Voz em `TTS_VOICE` (`pt-BR-FranciscaNeural` padrão; `pt-BR-ThalitaNeural` também). Se a síntese, a conversão ou o envio falhar, a interpretação é enviada em texto e o dono recebe um aviso. O áudio passa pelo mesmo limite de mensagens por minuto e mostra "gravando áudio..." antes de sair.
+
+**Decisão: pacote npm `@andresaya/edge-tts` (sem sidecar Python).**
+1. Fala o protocolo WebSocket do Edge TTS direto do Node, com só 2 dependências (`ws`, `commander`) e tipos; um sidecar Python (`rany2/edge-tts`) exigiria Python na imagem e um processo a mais.
+2. O ffmpeg (`apt-get install --no-install-recommends ffmpeg` no `Dockerfile`) converte mp3 em ogg/opus e é o único peso extra da imagem. O pacote é GPL-3.0: ok para uso interno, confira antes de redistribuir a imagem. A API da Microsoft é não oficial e pode mudar sem aviso (reserva local: piper).
+3. O envio usa `POST /message/sendWhatsAppAudio/{instância}` com `{ number, audio (base64), encoding: true, delay }`, conforme o `SendAudioDto` do código-fonte da Evolution v2. **Ainda não testado contra uma instância real**: ao testar, confira se chega como nota de voz (onda sonora) e, se preciso, ajuste `encoding`.
+
 ## Rodar
 
 ```bash
@@ -49,6 +58,7 @@ No Docker (stack em `infra/`): `docker compose up -d atendimento`. O webhook da 
 Obrigatórias: `EVOLUTION_URL`, `EVOLUTION_API_KEY`, `WEBHOOK_TOKEN`, `NIM_API_KEY`.
 Gasto em anúncios (Meta, **somente leitura**, desligado por padrão): `META_AD_ACCOUNT_ID` (só os números da conta, com ou sem `act_`), `META_ACCESS_TOKEN` (token com permissão `ads_read`), `META_SPEND_SINCE` (primeiro dia da campanha, `AAAA-MM-DD`: o total é desde essa data), `META_API_VERSION` (`v25.0`; confirme a versão atual no changelog da Meta) e `AD_SPEND_POLL_MINUTES` (10). Os três primeiros são tudo-ou-nada. O gasto fica no painel como "desatualizado" depois de 1 h sem leitura e como "erro" se a Meta recusar o token; nesses casos o lucro líquido não é calculado. Se a conta estiver em outra moeda que não BRL, o gasto aparece na moeda dela e o lucro fica em branco (não mistura moedas). Se o token vencer, o dono é avisado uma vez.
 Ritmo das respostas: `REPLY_THINK_SECONDS` (14: tempo "lendo e pensando" antes de começar, 0 desliga) e `TYPING_MS_PER_CHAR` (90: tempo de "digitação" por caractere, teto de 20 s por mensagem). Uma resposta normal leva ~20 a 25 s. Para ficar mais lento ou mais rápido, mude esses dois números em `C:\chatwoot\atendimento.env` e rode `docker compose up -d atendimento`. Limites: `MAX_MSGS_PER_MIN_CHAT` (6) e `MAX_MSGS_PER_MIN` (20).
+Áudio: `TTS_ENABLED` (false) e `TTS_VOICE` (`pt-BR-FranciscaNeural`).
 Opcionais: `PORT` (3100), `EVOLUTION_INSTANCE` (`tarot`), `NIM_BASE_URL`, `NIM_MODEL` (`google/gemma-4-31b-it`), `TRIGGER_PHRASES` e `BLOCKLIST` (listas separadas por vírgula; a lista de bloqueio é por jid exato), `DB_PATH`.
 
 ## Pendências conhecidas
