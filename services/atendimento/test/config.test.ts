@@ -58,6 +58,13 @@ describe('loadConfig', () => {
     expect(custom.typingMsPerChar).toBe(40);
   });
 
+  it('agrupamento de mensagens: 8 s por padrão, configurável, 0 desliga', () => {
+    expect(loadConfig(REQUIRED).messageDebounceSeconds).toBe(8);
+    expect(loadConfig({ ...REQUIRED, MESSAGE_DEBOUNCE_SECONDS: '3' }).messageDebounceSeconds).toBe(3);
+    expect(loadConfig({ ...REQUIRED, MESSAGE_DEBOUNCE_SECONDS: '0' }).messageDebounceSeconds).toBe(0);
+    expect(() => loadConfig({ ...REQUIRED, MESSAGE_DEBOUNCE_SECONDS: '-1' })).toThrow(ConfigError);
+  });
+
   it('gasto em anúncios (Meta): desligado por padrão; ligado com conta, token e data de início', () => {
     const off = loadConfig(REQUIRED);
     expect(off.meta).toBeNull();

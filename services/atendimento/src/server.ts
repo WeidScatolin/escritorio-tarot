@@ -6,6 +6,7 @@ import { deliverReading, handleLead, markDelivered, type AgentDeps } from './age
 import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
 import { parseWebhook } from './evolution/parse.js';
+import { createDebouncer } from './debounce.js';
 import { decide } from './filter.js';
 import { createRateLimiter, thinkDelayMs, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
@@ -84,6 +85,18 @@ function sameToken(given: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+// Várias mensagens seguidas viram uma só (textos em linhas; áudios e figuras sem texto são ignorados
+// quando há texto). Os demais campos vêm da última mensagem; a marca de anúncio, da primeira que tiver.
+function mergeBatch(batch: InboundMessage[]): InboundMessage {
+  const last = batch[batch.length - 1]!;
+  const texts = batch.map((m) => m.text?.trim() ?? '').filter((t) => t.length > 0);
+  return {
+    ...last,
+    text: texts.length > 0 ? texts.join('\n') : null,
+    adReferral: batch.find((m) => m.adReferral !== null)?.adReferral ?? null,
+  };
+}
+
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const blocklist = new Set(deps.config.blocklist);
@@ -95,6 +108,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     ...(deps.rng ? { rng: deps.rng } : {}),
   };
 
+  const debouncer = createDebouncer<InboundMessage>({
+    waitMs: deps.config.messageDebounceSeconds * 1000,
+    onFlush: (jid, batch) => enqueue(jid, () => processBatch(jid, batch)),
+  });
   const queues = new Map<string, Promise<void>>();
   const pending = new Set<Promise<void>>();
   let processing = 0;
@@ -199,15 +216,26 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       handleOwnerMessage(msg);
       return;
     }
+    // Chat com mensagens aguardando silêncio já é um lead engajado, mesmo sem conversa gravada ainda.
+    const buffered = debouncer.has(msg.jid);
     const decision = decide(msg, {
-      conversation: deps.store.getConversation(msg.jid),
+      conversation:
+        deps.store.getConversation(msg.jid) ??
+        (buffered ? { jid: msg.jid, mode: 'ai', engagedAt: deps.now(), openChargeId: null, stage: 'greeting' } : null),
       triggerPhrases: deps.config.triggerPhrases,
       blocklist,
     });
     if (!decision.engage) return;
+    debouncer.push(msg.jid, msg);
+  }
 
+  // Depois do silêncio: junta o que o cliente escreveu e responde uma única vez.
+  async function processBatch(jid: string, batch: InboundMessage[]): Promise<void> {
+    // O dono pode ter assumido (ou o número ter sido bloqueado) durante a espera.
+    if (blocklist.has(jid) || deps.store.getConversation(jid)?.mode === 'human') return;
+    const msg = mergeBatch(batch);
     const result = await handleLead(agentDeps, msg);
-    await sendAll(msg.jid, result.replies);
+    await sendAll(jid, result.replies);
     if (result.notifyOwner) await safeNotify(result.notifyOwner);
   }
 
@@ -234,6 +262,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
     if (await sendAll(charge.jid, replies)) markDelivered(deps.store, chargeId);
   }
+
+  app.addHook('onClose', async () => debouncer.clear());
 
   app.decorate('settled', async () => {
     while (pending.size > 0) await Promise.all([...pending]);

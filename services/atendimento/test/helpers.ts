@@ -27,6 +27,8 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     maxMsgsPerMinute: 500,
     // Nos testes a espera inicial fica desligada, salvo nos que a exercitam.
     replyThinkSeconds: 0,
+    // Nos testes o agrupamento fica desligado, salvo nos que o exercitam.
+    messageDebounceSeconds: 0,
     typingMsPerChar: 90,
     meta: null,
     adSpendPollMinutes: 10,

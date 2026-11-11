@@ -35,8 +35,7 @@ Estado do projeto e o que falta. Leia junto com `docs/ROADMAP.md` e `docs/CONTEX
 - Instagram NÃO é obrigatório (só a Página do Facebook).
 
 ### 5. Conversa e segurança
-- Fluxo desejado está em `docs/CONTEXTO-PARA-IA.md` (nome, tema, oferta imediata, Pix, "embaralhando", leitura com imagens, despedida sem oferecer outra tiragem, agrupamento de mensagens com 8 s de silêncio). Parte ainda não implementada (agrupamento, nome/tema em mensagens separadas, despedida).
-- Em aberto: comportamento fora do escopo (saúde, gravidez, morte, loteria, crise emocional).
+- Fluxo desejado está em `docs/CONTEXTO-PARA-IA.md` (nome, tema, oferta imediata, Pix, "embaralhando", leitura com imagens, despedida sem oferecer outra tiragem, agrupamento de mensagens com 8 s de silêncio). Implementado: agrupamento (`src/debounce.ts`, `MESSAGE_DEBOUNCE_SECONDS`), nome e tema em mensagens separadas (prompt), despedida (`FAREWELL`, sem oferecer outra tiragem) e fora do escopo (`src/scope.ts`: saúde, gravidez, morte, loteria, risco emocional com CVV 188).
 - O parser de anúncio usa fixtures SUPOSTAS. Capturar um payload real depois de escanear o QR e corrigir parser e fixtures. Gatilho que funciona hoje: as frases-gatilho configuradas em `C:\chatwoot\atendimento.env`.
 - Avisos ao dono: só em log, o usuário disse que não precisa de canal ativo.
 
