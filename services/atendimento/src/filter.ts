@@ -2,7 +2,7 @@ import type { Conversation } from './store.js';
 import type { InboundMessage } from './types.js';
 
 export type Decision =
-  | { engage: true; reason: 'ad_referral' | 'trigger_phrase' | 'existing_lead' }
+  | { engage: true; reason: 'ad_referral' | 'trigger_phrase' | 'existing_lead' | 'all_chats' }
   | {
       engage: false;
       reason: 'from_me' | 'group' | 'blocklisted' | 'human_takeover' | 'not_a_lead';
@@ -12,6 +12,8 @@ export type FilterContext = {
   conversation: Conversation | null;
   triggerPhrases: string[];
   blocklist: Set<string>;
+  /** Número só do negócio: atende qualquer conversa individual nova (grupos, bloqueados e dono assumindo seguem de fora). */
+  engageAll?: boolean;
 };
 
 const STATUS_BROADCAST_JID = 'status@broadcast';
@@ -49,5 +51,6 @@ export function decide(msg: InboundMessage, ctx: FilterContext): Decision {
   if (ctx.conversation !== null && ctx.conversation.engagedAt !== null) {
     return { engage: true, reason: 'existing_lead' };
   }
+  if (ctx.engageAll === true) return { engage: true, reason: 'all_chats' };
   return { engage: false, reason: 'not_a_lead' };
 }

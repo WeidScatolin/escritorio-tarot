@@ -147,3 +147,21 @@ describe('decide', () => {
     expect(phrases).toEqual(['oi']);
   });
 });
+
+describe('engageAll (número só do negócio)', () => {
+  it('atende qualquer conversa individual nova, mesmo sem anúncio nem frase-gatilho', () => {
+    expect(decide(msg({ text: 'oi, boa noite' }), ctx({ engageAll: true }))).toEqual({ engage: true, reason: 'all_chats' });
+  });
+
+  it('continua ignorando as próprias mensagens, grupos, bloqueados e quem o dono assumiu', () => {
+    expect(decide(msg({ fromMe: true }), ctx({ engageAll: true }))).toMatchObject({ engage: false, reason: 'from_me' });
+    expect(decide(msg({ isGroup: true }), ctx({ engageAll: true }))).toMatchObject({ engage: false, reason: 'group' });
+    expect(decide(msg(), ctx({ engageAll: true, blocklist: new Set([JID]) }))).toMatchObject({ engage: false, reason: 'blocklisted' });
+    expect(decide(msg(), ctx({ engageAll: true, conversation: conv({ mode: 'human' }) }))).toMatchObject({ engage: false, reason: 'human_takeover' });
+  });
+
+  it('desligado por padrão', () => {
+    expect(decide(msg(), ctx())).toEqual({ engage: false, reason: 'not_a_lead' });
+  });
+});
+

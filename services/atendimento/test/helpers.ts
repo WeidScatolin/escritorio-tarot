@@ -22,6 +22,7 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     nimBaseUrl: 'https://nim.example/v1',
     nimModel: 'm',
     triggerPhrases: [],
+    engageAllChats: false,
     blocklist: [],
     dbPath: ':memory:',
     maxMsgsPerMinuteChat: 50,

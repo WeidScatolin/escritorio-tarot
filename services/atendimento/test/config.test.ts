@@ -134,3 +134,13 @@ describe('loadConfig', () => {
     expect(config.blocklist).toEqual(['5511999990000@s.whatsapp.net']);
   });
 });
+
+describe('ENGAGE_ALL_CHATS', () => {
+  it('desligado por padrão e ligado com true/1/sim', () => {
+    expect(loadConfig(REQUIRED).engageAllChats).toBe(false);
+    expect(loadConfig({ ...REQUIRED, ENGAGE_ALL_CHATS: 'true' }).engageAllChats).toBe(true);
+    expect(loadConfig({ ...REQUIRED, ENGAGE_ALL_CHATS: '1' }).engageAllChats).toBe(true);
+    expect(loadConfig({ ...REQUIRED, ENGAGE_ALL_CHATS: 'não' }).engageAllChats).toBe(false);
+  });
+});
+

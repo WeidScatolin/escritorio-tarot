@@ -17,6 +17,8 @@ export type Config = {
   nimBaseUrl: string;
   nimModel: string;
   triggerPhrases: string[];
+  /** ENGAGE_ALL_CHATS=true: número só do negócio, atende toda conversa individual nova (padrão: só anúncio/frase-gatilho). */
+  engageAllChats: boolean;
   blocklist: string[];
   dbPath: string;
   /** Teto de mensagens enviadas por minuto, por conversa e no total (ritmo humano e proteção do número). */
@@ -185,6 +187,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     nimBaseUrl: env.NIM_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1',
     nimModel: env.NIM_MODEL?.trim() || 'google/gemma-4-31b-it',
     triggerPhrases: csv(env.TRIGGER_PHRASES),
+    engageAllChats: /^(1|true|yes|sim)$/i.test(env.ENGAGE_ALL_CHATS?.trim() ?? ''),
     blocklist: csv(env.BLOCKLIST),
     dbPath: env.DB_PATH?.trim() || './data/atendimento.db',
     maxMsgsPerMinuteChat: readPositiveInt(env, 'MAX_MSGS_PER_MIN_CHAT', 6),

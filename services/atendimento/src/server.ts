@@ -319,6 +319,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         (buffered ? { jid: msg.jid, mode: 'ai', engagedAt: deps.now(), openChargeId: null, stage: 'greeting' } : null),
       triggerPhrases: deps.config.triggerPhrases,
       blocklist,
+      engageAll: deps.config.engageAllChats,
     });
     if (!decision.engage) return;
     debouncer.push(msg.jid, msg);
