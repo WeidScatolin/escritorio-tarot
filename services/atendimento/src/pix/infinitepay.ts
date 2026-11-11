@@ -14,7 +14,8 @@ export type InfinitePayOptions = {
   handle: string;
   /** Chave `inchk_...` (opcional). Nunca entra em mensagens de erro nem em logs. */
   apiKey: string | null;
-  webhookUrl: string;
+  /** Endereço fixo ou função que o resolve a cada link (o túnel gratuito muda de endereço ao reiniciar). */
+  webhookUrl: string | (() => Promise<string>);
   baseUrl?: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
@@ -69,10 +70,11 @@ export function createInfinitePay(opts: InfinitePayOptions): PixProvider {
     kind: 'link',
 
     async createCharge({ orderId, amountCents, description }) {
+      const webhookUrl = typeof opts.webhookUrl === 'function' ? await opts.webhookUrl() : opts.webhookUrl;
       const body: Record<string, unknown> = {
         handle: opts.handle,
         order_nsu: orderId,
-        webhook_url: opts.webhookUrl,
+        webhook_url: webhookUrl,
         items: [{ quantity: 1, price: amountCents, description }],
       };
       if (opts.apiKey) {

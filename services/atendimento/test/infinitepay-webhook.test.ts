@@ -32,7 +32,7 @@ function setup(check: () => { status?: number; body?: unknown; throws?: boolean 
   const f = makeProviderFetch(check);
   const h = makeHarness({
     config: {
-      infinitepay: { handle: 'fake-handle', apiKey: null, publicBaseUrl: 'https://tarot.example.com', webhookToken: IP_TOKEN },
+      infinitepay: { handle: 'fake-handle', apiKey: null, publicBaseUrl: 'https://tarot.example.com', tunnelMetricsUrl: null, webhookToken: IP_TOKEN },
     },
   });
   const pix = createInfinitePay({

@@ -45,8 +45,10 @@ export type InfinitePayConfig = {
   handle: string;
   /** Chave `inchk_...` (opcional; habilita as opções do link). Segredo: nunca em log. */
   apiKey: string | null;
-  /** Endereço público https do serviço (sem barra final), usado para montar a webhook_url. */
-  publicBaseUrl: string;
+  /** Endereço público https fixo do serviço (sem barra final), usado para montar a webhook_url. Opcional com túnel. */
+  publicBaseUrl: string | null;
+  /** Endereço de métricas do cloudflared (…/quicktunnel): lê o endereço atual do túnel a cada link. */
+  tunnelMetricsUrl: string | null;
   /** Segredo no caminho do webhook da InfinitePay. */
   webhookToken: string;
 };
@@ -146,20 +148,18 @@ function readInfinitePay(env: Record<string, string | undefined>, defaultWebhook
 
   const handle = (env.INFINITEPAY_HANDLE?.trim() ?? '').replace(/^\$/, '');
   const base = env.PUBLIC_BASE_URL?.trim() ?? '';
-  const missing = [
-    ['INFINITEPAY_HANDLE', handle],
-    ['PUBLIC_BASE_URL', base],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
+  const tunnel = env.TUNNEL_METRICS_URL?.trim() ?? '';
+  const missing = [!handle ? 'INFINITEPAY_HANDLE' : null, !base && !tunnel ? 'PUBLIC_BASE_URL (ou TUNNEL_METRICS_URL)' : null].filter(Boolean);
   if (missing.length > 0) throw new ConfigError(`PIX_PROVIDER=infinitepay exige: ${missing.join(', ')}`);
   if (!/^[A-Za-z0-9._-]+$/.test(handle)) throw new ConfigError('INFINITEPAY_HANDLE inválido: use só a InfiniteTag, sem espaços');
-  if (!/^https:\/\/[^\s/]+/.test(base)) throw new ConfigError('PUBLIC_BASE_URL inválida: use um endereço https://');
+  if (base && !/^https:\/\/[^\s/]+/.test(base)) throw new ConfigError('PUBLIC_BASE_URL inválida: use um endereço https://');
+  if (tunnel && !/^http:\/\/[^\s/]+/.test(tunnel)) throw new ConfigError('TUNNEL_METRICS_URL inválida: use um endereço http:// interno');
 
   return {
     handle,
     apiKey: env.INFINITEPAY_API_KEY?.trim() || null,
-    publicBaseUrl: base.replace(/\/+$/, ''),
+    publicBaseUrl: base ? base.replace(/\/+$/, '') : null,
+    tunnelMetricsUrl: tunnel || null,
     webhookToken: env.INFINITEPAY_WEBHOOK_TOKEN?.trim() || defaultWebhookToken,
   };
 }

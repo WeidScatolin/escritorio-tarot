@@ -9,6 +9,7 @@ import { createNimClient } from './llm/nim.js';
 import { startPublisher } from './publish.js';
 import { createFakePix } from './pix/fake.js';
 import { createInfinitePay } from './pix/infinitepay.js';
+import { createTunnelResolver } from './pix/tunnel.js';
 import { buildServer } from './server.js';
 import { createEdgeTts } from './tts/edge.js';
 import { createStore } from './store.js';
@@ -28,13 +29,16 @@ try {
   } else {
     console.warn('ATENÇÃO: usando provedor de Pix FALSO (somente teste).');
   }
-  const pix = ip
-    ? createInfinitePay({
-        handle: ip.handle,
-        apiKey: ip.apiKey,
-        webhookUrl: `${ip.publicBaseUrl}/webhook/infinitepay/${encodeURIComponent(ip.webhookToken)}`,
-      })
-    : createFakePix();
+  const publicBase = ip ? createTunnelResolver({ metricsUrl: ip.tunnelMetricsUrl, fallbackBase: ip.publicBaseUrl }) : null;
+  const pix =
+    ip && publicBase
+      ? createInfinitePay({
+          handle: ip.handle,
+          apiKey: ip.apiKey,
+          // O endereço do túnel muda a cada reinício: é resolvido na hora de criar cada link.
+          webhookUrl: async () => `${await publicBase()}/webhook/infinitepay/${encodeURIComponent(ip.webhookToken)}`,
+        })
+      : createFakePix();
 
   const store = createStore(config.dbPath);
   const app = buildServer({
