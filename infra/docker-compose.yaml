@@ -78,6 +78,23 @@ services:
       - '127.0.0.1:3100:3100'
     mem_limit: 256m
 
+  painel-proxy:
+    image: nginx:alpine
+    container_name: painel_proxy
+    restart: unless-stopped
+    depends_on: [atendimento]
+    volumes:
+      - ./painel-proxy.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    mem_limit: 32m
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: painel_tunnel
+    restart: unless-stopped
+    depends_on: [painel-proxy]
+    command: tunnel --no-autoupdate --url http://painel-proxy:8080
+    mem_limit: 128m
+
 volumes:
   storage_data:
   postgres_data:

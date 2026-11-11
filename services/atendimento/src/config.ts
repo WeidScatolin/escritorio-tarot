@@ -30,7 +30,11 @@ export type Config = {
   meta: MetaConfig | null;
   /** De quantos em quantos minutos o gasto é atualizado. */
   adSpendPollMinutes: number;
+  /** Envio do resumo do painel para a Vercel. null = desligado. */
+  publish: PublishConfig | null;
 };
+
+export type PublishConfig = { url: string; secret: string; intervalSeconds: number };
 
 export type MetaConfig = { adAccountId: string; accessToken: string; apiVersion: string; spendSince: string };
 
@@ -87,6 +91,22 @@ function readMeta(env: Record<string, string | undefined>): MetaConfig | null {
   return { adAccountId: accountId, accessToken: token, apiVersion, spendSince: since };
 }
 
+// Tudo ou nada: URL e segredo. A URL tem de ser https (o segredo viaja no cabeçalho).
+function readPublish(env: Record<string, string | undefined>): PublishConfig | null {
+  const url = env.PUBLISH_URL?.trim() ?? '';
+  const secret = env.PUBLISH_SECRET?.trim() ?? '';
+  if (!url && !secret) return null;
+  const missing = [
+    ['PUBLISH_URL', url],
+    ['PUBLISH_SECRET', secret],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missing.length > 0) throw new ConfigError(`Publicação na Vercel parcialmente configurada: faltam ${missing.join(', ')}`);
+  if (!url.startsWith('https://')) throw new ConfigError('PUBLISH_URL inválida: use um endereço https://');
+  return { url, secret, intervalSeconds: readPositiveInt(env, 'PUBLISH_INTERVAL_SECONDS', 60) };
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const missing = REQUIRED.filter((name) => !env[name]?.trim());
   if (missing.length > 0) {
@@ -116,5 +136,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     typingMsPerChar: readPositiveInt(env, 'TYPING_MS_PER_CHAR', 90),
     meta: readMeta(env),
     adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
+    publish: readPublish(env),
   };
 }

@@ -5,6 +5,7 @@ import { startAdSpendPolling } from './ads/tracker.js';
 import { ConfigError, loadConfig } from './config.js';
 import { createEvolutionClient } from './evolution/client.js';
 import { createNimClient } from './llm/nim.js';
+import { startPublisher } from './publish.js';
 import { createFakePix } from './pix/fake.js';
 import { buildServer } from './server.js';
 import { createStore } from './store.js';
@@ -65,8 +66,23 @@ try {
     console.log('Gasto em anúncios desligado (META_* não configurado): o painel mostra "—".');
   }
 
+  // Resumo do painel para a Vercel (saída apenas): só liga com PUBLISH_URL e PUBLISH_SECRET.
+  let stopPublisher: () => void = () => undefined;
+  if (config.publish) {
+    stopPublisher = startPublisher(
+      {
+        statsUrl: `http://127.0.0.1:${config.port}/api/stats/${encodeURIComponent(config.webhookToken)}`,
+        pushUrl: config.publish.url,
+        secret: config.publish.secret,
+      },
+      config.publish.intervalSeconds * 1000,
+    );
+    console.log(`Publicação do painel na Vercel ligada (a cada ${config.publish.intervalSeconds}s).`);
+  }
+
   const stop = async () => {
     stopAdSpend();
+    stopPublisher();
     await app.settled();
     await app.close();
     store.close();

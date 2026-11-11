@@ -30,6 +30,7 @@ export function makeConfig(over: Partial<Config> = {}): Config {
     typingMsPerChar: 90,
     meta: null,
     adSpendPollMinutes: 10,
+    publish: null,
     ...over,
   };
 }
