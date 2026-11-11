@@ -23,6 +23,11 @@ SUITS = ['Cups', 'Pents', 'Swords', 'Wands']
 names = MAJOR + [f'{suit}{n:02d}' for suit in SUITS for n in range(1, 15)]
 assert len(names) == 78
 
+# Política da Wikimedia: User-Agent descritivo (ferramenta/versão, finalidade, biblioteca).
+USER_AGENT = ('escritorio-tarot-card-fetcher/1.1 (personal non-commercial tarot project; '
+              'downloads public-domain RWS card scans; Python-urllib)')
+MAX_RETRY_WAIT = 900  # respeita Retry-After até 15 min
+
 out = Path(__file__).resolve().parent.parent / 'assets' / 'cards'
 out.mkdir(parents=True, exist_ok=True)
 
@@ -31,7 +36,7 @@ for index, name in enumerate(names):
     if target.exists():
         continue
     url = f'https://commons.wikimedia.org/wiki/Special:FilePath/{name}.jpg'
-    request = urllib.request.Request(url, headers={'User-Agent': 'escritorio-tarot/1.0 (personal project)'})
+    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
     image = None
     for attempt in range(5):
         try:
@@ -41,8 +46,11 @@ for index, name in enumerate(names):
         except urllib.error.HTTPError as error:
             # 429 = limite de requisições: espera (respeitando Retry-After) e tenta de novo.
             wait = int(error.headers.get('Retry-After') or 0) or 10 * (attempt + 1)
-            print(f'HTTP {error.code} em {name}, esperando {wait}s', file=sys.stderr)
-            time.sleep(min(wait, 60))
+            if error.code not in (429, 503):
+                print(f'FALHOU {index:02d} {name}: HTTP {error.code}', file=sys.stderr)
+                break
+            print(f'HTTP {error.code} em {name}, esperando {min(wait, MAX_RETRY_WAIT)}s', file=sys.stderr, flush=True)
+            time.sleep(min(wait, MAX_RETRY_WAIT))
         except Exception as error:  # noqa: BLE001 - relatório simples, segue para as outras
             print(f'FALHOU {index:02d} {name}: {type(error).__name__}', file=sys.stderr)
             break
