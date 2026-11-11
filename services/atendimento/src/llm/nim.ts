@@ -48,6 +48,8 @@ async function readResponse(response: Response): Promise<LlmResult> {
   return text === null ? UNAVAILABLE : { kind: 'ok', text };
 }
 
+const rejectsTemperature = (model: string): boolean => /(^|\/)claude/i.test(model);
+
 export function createNimClient(opts: NimClientOptions): LlmClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const url = `${opts.baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -70,7 +72,8 @@ export function createNimClient(opts: NimClientOptions): LlmClient {
             model: opts.model,
             messages: [{ role: 'system', content: input.system }, ...input.messages],
             max_tokens: MAX_TOKENS,
-            temperature: TEMPERATURE,
+            // Os modelos Claude recentes recusam `temperature` (HTTP 400): nesses, o parâmetro é omitido.
+            ...(rejectsTemperature(opts.model) ? {} : { temperature: TEMPERATURE }),
           }),
           signal: controller.signal,
         });

@@ -141,3 +141,15 @@ describe('createNimClient', () => {
     expect(JSON.stringify(result)).not.toContain(API_KEY);
   });
 });
+
+describe('modelos Claude', () => {
+  it('omite temperature (o modelo recusa o parâmetro) e mantém o resto do pedido', async () => {
+    const { fetchImpl, calls } = recordingFetch(() => jsonResponse(200, { choices: [{ message: { content: 'oi' } }] }));
+    const client = createNimClient({ apiKey: API_KEY, baseUrl: 'https://api.anthropic.com/v1', model: 'claude-haiku-5-5', timeoutMs: 1000, fetchImpl });
+    await client.complete(INPUT);
+    const body = JSON.parse(String(calls[0]!.init.body));
+    expect(body).not.toHaveProperty('temperature');
+    expect(body.model).toBe('claude-haiku-5-5');
+    expect(body.max_tokens).toBe(400);
+  });
+});

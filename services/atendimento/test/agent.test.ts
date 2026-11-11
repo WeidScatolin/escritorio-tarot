@@ -260,7 +260,7 @@ describe('deliverReading', () => {
   it('depois de marcada como entregue, a segunda chamada não entrega de novo', async () => {
     const charge = await paidCharge();
     await markPaid(charge.chargeId);
-    const llm = fakeLlm([ok('Leitura.')]);
+    const llm = fakeLlm([ok('Leitura completa e acolhedora.')]);
 
     await deliverReading(deps(llm.client), charge.chargeId);
     markDelivered(store, charge.chargeId);
@@ -271,7 +271,7 @@ describe('deliverReading', () => {
   it('se o envio falhou (não marcou entregue), a repetição reentrega com as MESMAS cartas', async () => {
     const charge = await paidCharge();
     await markPaid(charge.chargeId);
-    const llm = fakeLlm([ok('Leitura.')]);
+    const llm = fakeLlm([ok('Leitura completa e acolhedora.')]);
 
     const first = await deliverReading(deps(llm.client), charge.chargeId);
     const cardsAfterFirst = store.getCharge(charge.chargeId)!.cards;
