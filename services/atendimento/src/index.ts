@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createMetaAdSpend } from './ads/meta.js';
 import { startAdSpendPolling } from './ads/tracker.js';
 import { ConfigError, loadConfig } from './config.js';
@@ -38,6 +39,7 @@ try {
       instance: config.instance,
     }),
     now: Date.now,
+    assetsDir: fileURLToPath(new URL('../assets', import.meta.url)),
     notifyOwner: (text) => console.warn(`[AVISO AO DONO] ${text}`),
   });
 

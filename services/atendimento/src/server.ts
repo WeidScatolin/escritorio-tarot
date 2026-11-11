@@ -1,7 +1,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { basename } from 'node:path';
+import { buildDeliveryMedia, type DeliveryMedia } from './cards.js';
+import { getItem } from './catalog.js';
 import { deliverReading, handleLead, markDelivered, type AgentDeps } from './agent.js';
 import type { Config } from './config.js';
 import type { EvolutionClient } from './evolution/client.js';
@@ -31,6 +35,8 @@ export type ServerDeps = {
   /** Espera de verdade em produção; nos testes é simulada. */
   sleep?: (ms: number) => Promise<void>;
   rng?: () => number;
+  /** Pasta assets/ (shuffling.jpg e cards/NN.jpg). Sem ela, a entrega é só texto. */
+  assetsDir?: string;
   notifyOwner: (text: string) => void | Promise<void>;
 };
 
@@ -146,8 +152,29 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
   }
 
-  // Devolve true só se TODAS as mensagens foram enviadas.
-  async function sendAll(jid: string, texts: string[]): Promise<boolean> {
+  // Imagem opcional: falha (arquivo ausente, envio recusado) devolve false e nunca trava a entrega.
+  async function sendImage(jid: string, image: { path: string | null; caption: string }): Promise<boolean> {
+    if (!image.path) return false;
+    try {
+      const base64 = (await readFile(image.path)).toString('base64');
+      await limiter.acquire(jid);
+      const typing = typingDelayMs(image.caption, Math.random, { perCharMs: deps.config.typingMsPerChar });
+      const { messageId } = await deps.evolution.sendMedia(
+        jid,
+        { base64, mimetype: 'image/jpeg', fileName: basename(image.path), caption: image.caption },
+        { delayMs: typing },
+      );
+      if (messageId) deps.store.markSeen(messageId);
+      else botActiveUntil.set(jid, deps.now() + BOT_ECHO_WINDOW_MS);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Devolve true só se TODAS as mensagens de texto foram enviadas. As imagens (opcionais) vão antes;
+  // se todas as cartas foram como imagem, o cabeçalho em texto (primeira resposta) é dispensado.
+  async function sendAll(jid: string, texts: string[], media?: DeliveryMedia): Promise<boolean> {
     if (!isIndividualChat(jid)) {
       await safeNotify(`Envio recusado: ${jid} não é uma conversa individual (grupos e canais nunca recebem resposta).`);
       return false;
@@ -159,7 +186,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // "Lendo e pensando": espera antes de começar (sem aparecer "digitando"), uma vez por resposta.
       const think = thinkDelayMs(deps.config.replyThinkSeconds);
       if (think > 0) await (deps.sleep ?? realSleep)(think);
-      for (const text of texts) {
+      let toSend = texts;
+      if (media) {
+        if (media.shuffling) await sendImage(jid, media.shuffling);
+        let cardsSent = 0;
+        for (const card of media.cards) if (await sendImage(jid, card)) cardsSent += 1;
+        if (cardsSent < media.cards.length) {
+          await safeNotify(`Imagens das cartas indisponíveis (${media.cards.length - cardsSent}) no chat ${jid}; seguiu em texto.`);
+        } else if (texts.length > 1) {
+          toSend = texts.slice(1);
+        }
+      }
+      for (const text of toSend) {
         try {
           await limiter.acquire(jid);
           const typing = typingDelayMs(text, Math.random, { perCharMs: deps.config.typingMsPerChar });
@@ -211,6 +249,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (result.notifyOwner) await safeNotify(result.notifyOwner);
   }
 
+  // Cartas gravadas na cobrança (a reentrega usa as mesmas) viram imagens; sem assetsDir, só texto.
+  function deliveryMedia(chargeId: string): DeliveryMedia | undefined {
+    if (!deps.assetsDir) return undefined;
+    const charge = deps.store.getCharge(chargeId);
+    if (!charge?.cards) return undefined;
+    return buildDeliveryMedia(deps.assetsDir, charge.cards, getItem(charge.itemId)?.positions ?? []);
+  }
+
   async function processPayment(chargeId: string): Promise<void> {
     const charge = deps.store.getCharge(chargeId);
     if (!charge) return;
@@ -232,7 +278,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       );
     }
     // "Entregue" só depois de enviar: se falhar, a repetição do webhook tenta de novo.
-    if (await sendAll(charge.jid, replies)) markDelivered(deps.store, chargeId);
+    if (await sendAll(charge.jid, replies, deliveryMedia(chargeId))) markDelivered(deps.store, chargeId);
   }
 
   app.decorate('settled', async () => {

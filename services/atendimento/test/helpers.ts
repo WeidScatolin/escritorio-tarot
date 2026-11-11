@@ -45,11 +45,13 @@ export function makeHarness(
   opts: { llm?: LlmResult[]; config?: Partial<Config>; sendFails?: boolean; sendReturnsNoId?: boolean } = {},
 ) {
   const sent: { jid: string; text: string; messageId: string | null; delayMs: number | undefined }[] = [];
+  const sentMedia: { jid: string; fileName: string; caption: string | undefined; delayMs: number | undefined }[] = [];
+  const order: string[] = [];
   const sleeps: number[] = [];
   const notices: string[] = [];
   const llmCalls: { system: string; messages: { role: string; content: string }[] }[] = [];
   const clock = { t: T0 };
-  const flags = { sendFails: opts.sendFails ?? false };
+  const flags = { sendFails: opts.sendFails ?? false, mediaFails: false };
   const results = opts.llm ?? [agentJson('Oi!')];
   let counter = 0;
 
@@ -65,7 +67,15 @@ export function makeHarness(
       counter += 1;
       const messageId = opts.sendReturnsNoId ? null : `sent-${counter}`;
       sent.push({ jid, text, messageId, delayMs: sendOpts?.delayMs });
+      order.push('text');
       return { messageId };
+    },
+    async sendMedia(jid, media, sendOpts) {
+      if (flags.mediaFails) throw new Error(`boom apikey=${API_KEY}`);
+      counter += 1;
+      sentMedia.push({ jid, fileName: media.fileName, caption: media.caption, delayMs: sendOpts?.delayMs });
+      order.push(`media:${media.fileName}`);
+      return { messageId: `sent-${counter}` };
     },
   };
 
@@ -87,7 +97,7 @@ export function makeHarness(
       notices.push(text);
     },
   };
-  return { deps, sent, sleeps, notices, llmCalls, clock, flags, store, pix };
+  return { deps, sent, sentMedia, order, sleeps, notices, llmCalls, clock, flags, store, pix };
 }
 
 export function upsert(o: {
