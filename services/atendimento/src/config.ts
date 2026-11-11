@@ -24,6 +24,8 @@ export type Config = {
   maxMsgsPerMinute: number;
   /** Segundos "lendo e pensando" antes de começar a responder (0 desliga). */
   replyThinkSeconds: number;
+  /** Segundos de silêncio do cliente antes de a IA responder; as mensagens do intervalo são juntas (0 desliga). */
+  messageDebounceSeconds: number;
   /** Milissegundos de "digitação" por caractere da resposta. */
   typingMsPerChar: number;
   /** Leitura do gasto em anúncios pela Meta (somente leitura). null = desligado. */
@@ -133,6 +135,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     maxMsgsPerMinuteChat: readPositiveInt(env, 'MAX_MSGS_PER_MIN_CHAT', 6),
     maxMsgsPerMinute: readPositiveInt(env, 'MAX_MSGS_PER_MIN', 20),
     replyThinkSeconds: readNonNegativeInt(env, 'REPLY_THINK_SECONDS', 14),
+    messageDebounceSeconds: readNonNegativeInt(env, 'MESSAGE_DEBOUNCE_SECONDS', 8),
     typingMsPerChar: readPositiveInt(env, 'TYPING_MS_PER_CHAR', 90),
     meta: readMeta(env),
     adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
