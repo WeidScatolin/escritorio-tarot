@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getItem } from './catalog.js';
-import type { PixProvider } from './pix/provider.js';
+import type { PaymentProof, PixProvider } from './pix/provider.js';
 import type { Charge, Store } from './store.js';
 
 type Deps = { store: Store; pix: PixProvider; now?: () => number };
@@ -12,7 +12,7 @@ export class UnknownItemError extends Error {
   }
 }
 
-// O copyPaste é gravado junto da cobrança para poder reenviar o Pix se o envio falhar.
+// O copyPaste (código Pix ou link de pagamento) é gravado junto da cobrança para poder reenviá-lo.
 export type OpenedCharge = Charge & { copyPaste: string };
 
 export async function openCharge(deps: Deps, jid: string, itemId: string): Promise<OpenedCharge> {
@@ -42,15 +42,24 @@ export async function openCharge(deps: Deps, jid: string, itemId: string): Promi
 export async function confirmPayment(
   deps: Deps,
   chargeId: string,
+  proof?: PaymentProof,
 ): Promise<'paid' | 'pending' | 'mismatch' | 'unknown'> {
   const charge = deps.store.getCharge(chargeId);
   if (!charge) return 'unknown';
   if (charge.status === 'paid') return 'paid';
 
-  const result = await deps.pix.verifyPaid(chargeId);
+  // Comprovante novo (do webhook) ou o já guardado; só é gravado depois de o provedor confirmar.
+  const usedProof =
+    proof ?? (charge.transactionNsu && charge.slug ? { transactionNsu: charge.transactionNsu, slug: charge.slug } : undefined);
+  const result = await deps.pix.verifyPaid(chargeId, usedProof);
   if (!result.paid) return 'pending';
   if (result.paidCents !== charge.amountCents) return 'mismatch';
 
-  deps.store.saveCharge({ ...charge, status: 'paid', paidAtMs: (deps.now ?? Date.now)() });
+  deps.store.saveCharge({
+    ...charge,
+    status: 'paid',
+    paidAtMs: (deps.now ?? Date.now)(),
+    ...(usedProof ? { transactionNsu: usedProof.transactionNsu, slug: usedProof.slug } : {}),
+  });
   return 'paid';
 }

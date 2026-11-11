@@ -15,7 +15,7 @@ import { decide } from './filter.js';
 import { createRateLimiter, thinkDelayMs, typingDelayMs } from './humanize.js';
 import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
-import type { PixProvider } from './pix/provider.js';
+import type { PaymentProof, PixProvider } from './pix/provider.js';
 import type { AdSpendRecord, Store } from './store.js';
 import type { TtsClient } from './tts/types.js';
 import type { InboundMessage } from './types.js';
@@ -88,6 +88,13 @@ function adSpendView(record: AdSpendRecord | null, metaEnabled: boolean, nowMs: 
 const PANEL_FILE = new URL('../public/painel.html', import.meta.url);
 
 const pixBodySchema = z.object({ chargeId: z.string().min(1) });
+
+// Webhook da InfinitePay (sem assinatura): só order_nsu é obrigatório; o resto serve para a consulta.
+const infinitePayBodySchema = z.object({
+  order_nsu: z.string().min(1),
+  transaction_nsu: z.string().min(1).optional(),
+  invoice_slug: z.string().min(1).optional(),
+});
 
 function sameToken(given: string, expected: string): boolean {
   const a = createHash('sha256').update(given).digest();
@@ -335,15 +342,24 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return buildDeliveryMedia(deps.assetsDir, charge.cards, getItem(charge.itemId)?.positions ?? []);
   }
 
-  async function processPayment(chargeId: string): Promise<void> {
-    const charge = deps.store.getCharge(chargeId);
-    if (!charge) return;
-    const status = await confirmPayment({ store: deps.store, pix: deps.pix, now: deps.now }, chargeId);
+  // Consulta o provedor e, se pago, grava. Devolve o resultado; erro do provedor sobe para o chamador.
+  async function settlePayment(chargeId: string, proof?: PaymentProof): Promise<'paid' | 'pending' | 'mismatch' | 'unknown'> {
+    const status = await confirmPayment({ store: deps.store, pix: deps.pix, now: deps.now }, chargeId, proof);
     if (status === 'mismatch') {
       await safeNotify(`Pagamento com valor diferente na cobrança ${chargeId}; confira manualmente.`);
-      return;
     }
-    if (status !== 'paid') return;
+    return status;
+  }
+
+  async function processPayment(chargeId: string): Promise<void> {
+    if (!deps.store.getCharge(chargeId)) return;
+    if ((await settlePayment(chargeId)) !== 'paid') return;
+    await deliverPaid(chargeId);
+  }
+
+  async function deliverPaid(chargeId: string): Promise<void> {
+    const charge = deps.store.getCharge(chargeId);
+    if (!charge) return;
     const replies = await deliverReading(agentDeps, chargeId);
     if (replies.length === 0) return;
 
@@ -425,6 +441,35 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const charge = deps.store.getCharge(body.data.chargeId);
     if (!charge) return { ok: true };
     enqueue(charge.jid, () => processPayment(charge.chargeId));
+    return { ok: true };
+  });
+
+  // InfinitePay: o webhook não é assinado, então ele só dispara a consulta. "Pago" vem de /payment_check,
+  // feito aqui mesmo (rápido) para que, se o provedor falhar, a resposta 503 faça a InfinitePay reenviar.
+  app.post<{ Params: { token: string } }>('/webhook/infinitepay/:token', async (request, reply) => {
+    const ip = deps.config.infinitepay;
+    if (!ip || !sameToken(request.params.token, ip.webhookToken)) {
+      return reply.code(404).send({ error: 'not found' });
+    }
+    const body = infinitePayBodySchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid body' });
+    const charge = deps.store.getCharge(body.data.order_nsu);
+    if (!charge) return reply.code(404).send({ error: 'unknown order' });
+    if (charge.status === 'paid') {
+      // Já confirmada: só garante a entrega (repetição do webhook depois de uma falha de envio).
+      enqueue(charge.jid, () => deliverPaid(charge.chargeId));
+      return { ok: true };
+    }
+    const { transaction_nsu: transactionNsu, invoice_slug: slug } = body.data;
+    if (!transactionNsu || !slug) return { ok: true, ignored: 'missing_proof' };
+
+    let status: Awaited<ReturnType<typeof settlePayment>>;
+    try {
+      status = await settlePayment(charge.chargeId, { transactionNsu, slug });
+    } catch {
+      return reply.code(503).send({ error: 'payment check unavailable' });
+    }
+    if (status === 'paid') enqueue(charge.jid, () => deliverPaid(charge.chargeId));
     return { ok: true };
   });
 

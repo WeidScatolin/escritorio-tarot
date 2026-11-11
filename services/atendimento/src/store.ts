@@ -25,6 +25,9 @@ export type Charge = {
   delivered?: boolean;
   /** Horário (ms) em que o provedor confirmou o pagamento. */
   paidAtMs?: number | null;
+  /** Comprovante do provedor (InfinitePay), gravado só depois de confirmado por payment_check. */
+  transactionNsu?: string | null;
+  slug?: string | null;
 };
 
 /** Último gasto em anúncios lido da Meta (um único registro). */
@@ -96,7 +99,9 @@ CREATE TABLE IF NOT EXISTS charges (
   cards TEXT,
   copy_paste TEXT,
   delivered INTEGER NOT NULL DEFAULT 0,
-  paid_at INTEGER
+  paid_at INTEGER,
+  transaction_nsu TEXT,
+  slug TEXT
 );
 CREATE TABLE IF NOT EXISTS ad_spend (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -119,6 +124,8 @@ const COLUMN_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: 'charges', column: 'delivered', ddl: 'ALTER TABLE charges ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0' },
   { table: 'conversations', column: 'last_inbound_at', ddl: 'ALTER TABLE conversations ADD COLUMN last_inbound_at INTEGER' },
   { table: 'charges', column: 'paid_at', ddl: 'ALTER TABLE charges ADD COLUMN paid_at INTEGER' },
+  { table: 'charges', column: 'transaction_nsu', ddl: 'ALTER TABLE charges ADD COLUMN transaction_nsu TEXT' },
+  { table: 'charges', column: 'slug', ddl: 'ALTER TABLE charges ADD COLUMN slug TEXT' },
 ];
 
 type ConversationRow = {
@@ -140,6 +147,8 @@ type ChargeRow = {
   copy_paste: string | null;
   delivered: number;
   paid_at: number | null;
+  transaction_nsu: string | null;
+  slug: string | null;
 };
 
 type NoticeRow = { id: number; at_ms: number; text: string };
@@ -171,8 +180,8 @@ export function createStore(dbPath: string): Store {
     'SELECT role, content FROM messages WHERE jid = ? ORDER BY id DESC LIMIT ?',
   );
   const upsertCharge = db.prepare(
-    `INSERT INTO charges (charge_id, jid, item_id, amount_cents, status, cards, copy_paste, delivered, paid_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO charges (charge_id, jid, item_id, amount_cents, status, cards, copy_paste, delivered, paid_at, transaction_nsu, slug)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(charge_id) DO UPDATE SET
        jid = excluded.jid,
        item_id = excluded.item_id,
@@ -181,10 +190,12 @@ export function createStore(dbPath: string): Store {
        cards = excluded.cards,
        copy_paste = excluded.copy_paste,
        delivered = excluded.delivered,
-       paid_at = excluded.paid_at`,
+       paid_at = excluded.paid_at,
+       transaction_nsu = excluded.transaction_nsu,
+       slug = excluded.slug`,
   );
   const selectCharge = db.prepare(
-    'SELECT charge_id, jid, item_id, amount_cents, status, cards, copy_paste, delivered, paid_at FROM charges WHERE charge_id = ?',
+    'SELECT charge_id, jid, item_id, amount_cents, status, cards, copy_paste, delivered, paid_at, transaction_nsu, slug FROM charges WHERE charge_id = ?',
   );
   const selectPreviousDraws = db.prepare(
     'SELECT cards FROM charges WHERE jid = ? AND charge_id != ? AND cards IS NOT NULL ORDER BY rowid DESC',
@@ -261,6 +272,8 @@ export function createStore(dbPath: string): Store {
         c.copyPaste ?? null,
         c.delivered ? 1 : 0,
         c.paidAtMs ?? null,
+        c.transactionNsu ?? null,
+        c.slug ?? null,
       );
     },
 
@@ -277,6 +290,9 @@ export function createStore(dbPath: string): Store {
         copyPaste: row.copy_paste,
         delivered: row.delivered === 1,
         paidAtMs: row.paid_at,
+        // Só aparecem quando existem: cobranças sem comprovante mantêm o formato de antes.
+        ...(row.transaction_nsu !== null ? { transactionNsu: row.transaction_nsu } : {}),
+        ...(row.slug !== null ? { slug: row.slug } : {}),
       };
     },
 

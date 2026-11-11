@@ -36,6 +36,19 @@ export type Config = {
   publish: PublishConfig | null;
   /** Leitura em áudio (nota de voz). null/ausente = desligado (tudo em texto). */
   tts?: TtsConfig | null;
+  /** Pix real pela InfinitePay. null/ausente = provedor de Pix FALSO (padrão, só teste). */
+  infinitepay?: InfinitePayConfig | null;
+};
+
+export type InfinitePayConfig = {
+  /** InfiniteTag, sem o "$". */
+  handle: string;
+  /** Chave `inchk_...` (opcional; habilita as opções do link). Segredo: nunca em log. */
+  apiKey: string | null;
+  /** Endereço público https do serviço (sem barra final), usado para montar a webhook_url. */
+  publicBaseUrl: string;
+  /** Segredo no caminho do webhook da InfinitePay. */
+  webhookToken: string;
 };
 
 export type TtsConfig = { voice: string };
@@ -125,6 +138,32 @@ function readTts(env: Record<string, string | undefined>): TtsConfig | null {
   return { voice };
 }
 
+// Fake por padrão. Com infinitepay, handle e endereço público são obrigatórios (as mensagens citam só os nomes).
+function readInfinitePay(env: Record<string, string | undefined>, defaultWebhookToken: string): InfinitePayConfig | null {
+  const provider = env.PIX_PROVIDER?.trim().toLowerCase() || 'fake';
+  if (provider === 'fake') return null;
+  if (provider !== 'infinitepay') throw new ConfigError('PIX_PROVIDER inválido: use fake ou infinitepay');
+
+  const handle = (env.INFINITEPAY_HANDLE?.trim() ?? '').replace(/^\$/, '');
+  const base = env.PUBLIC_BASE_URL?.trim() ?? '';
+  const missing = [
+    ['INFINITEPAY_HANDLE', handle],
+    ['PUBLIC_BASE_URL', base],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missing.length > 0) throw new ConfigError(`PIX_PROVIDER=infinitepay exige: ${missing.join(', ')}`);
+  if (!/^[A-Za-z0-9._-]+$/.test(handle)) throw new ConfigError('INFINITEPAY_HANDLE inválido: use só a InfiniteTag, sem espaços');
+  if (!/^https:\/\/[^\s/]+/.test(base)) throw new ConfigError('PUBLIC_BASE_URL inválida: use um endereço https://');
+
+  return {
+    handle,
+    apiKey: env.INFINITEPAY_API_KEY?.trim() || null,
+    publicBaseUrl: base.replace(/\/+$/, ''),
+    webhookToken: env.INFINITEPAY_WEBHOOK_TOKEN?.trim() || defaultWebhookToken,
+  };
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const missing = REQUIRED.filter((name) => !env[name]?.trim());
   if (missing.length > 0) {
@@ -157,5 +196,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
     publish: readPublish(env),
     tts: readTts(env),
+    infinitepay: readInfinitePay(env, env.WEBHOOK_TOKEN!.trim()),
   };
 }

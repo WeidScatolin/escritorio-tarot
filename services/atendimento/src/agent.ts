@@ -28,7 +28,9 @@ const SAFE_FALLBACK = 'Tive um probleminha aqui e já pedi ajuda. Em instantes a
 const OUT_OF_SCOPE = 'Posso te ajudar com as tiragens do nosso catálogo. Quer que eu te explique as opções?';
 const AWAITING_PAYMENT = 'Assim que o pagamento for confirmado pelo sistema, eu libero a sua leitura. Se você já pagou, é só aguardar alguns instantes. 🙏';
 const RESENT_PIX = 'Sem problema! Aqui está de novo o Pix que já te enviei:';
+const RESENT_LINK = 'Sem problema! Aqui está de novo o link para pagar por Pix:';
 const ALREADY_SENT_NO_CODE = 'O Pix já foi enviado acima. Assim que o pagamento for confirmado pelo sistema, eu libero a sua leitura.';
+const payLinkMessage = (link: string): string => `Pague por Pix neste link: ${link}`;
 export const FAREWELL =
   'Foi um prazer te atender! 💜 Muito obrigada pela confiança. Fico à disposição sempre que você quiser voltar.';
 const NO_SUCH_OPTION = 'Não consegui montar essa opção agora. Já pedi ajuda e logo alguém te responde. 🙏';
@@ -295,14 +297,28 @@ export async function handleLead(deps: AgentDeps, msg: InboundMessage): Promise<
     if (!open.copyPaste) {
       return respond(ALREADY_SENT_NO_CODE, notice ?? `Cobrança aberta sem código guardado no chat ${msg.jid}`);
     }
-    remember(store, msg.jid, RESENT_PIX);
-    return notice
-      ? { replies: [RESENT_PIX, open.copyPaste, AWAITING_PAYMENT], notifyOwner: notice }
-      : { replies: [RESENT_PIX, open.copyPaste, AWAITING_PAYMENT] };
+    const isLink = deps.pix.kind === 'link';
+    const resent = isLink ? RESENT_LINK : RESENT_PIX;
+    remember(store, msg.jid, resent);
+    // O link/código vai numa mensagem enviada pelo código, nunca escrita pela IA (o guarda não se aplica).
+    const replies = [resent, isLink ? payLinkMessage(open.copyPaste) : open.copyPaste, AWAITING_PAYMENT];
+    return notice ? { replies, notifyOwner: notice } : { replies };
   }
 
-  const charge = await openCharge({ store, pix: deps.pix }, msg.jid, item.id);
+  let charge;
+  try {
+    charge = await openCharge({ store, pix: deps.pix }, msg.jid, item.id);
+  } catch (error) {
+    // Provedor de Pix fora do ar: nada é aberto; a cliente recebe a resposta segura e o dono é avisado.
+    const kind = error instanceof Error ? error.name : 'erro';
+    return respond(SAFE_FALLBACK, `Falha ao criar a cobrança Pix (${kind}) no chat ${msg.jid}`);
+  }
   store.saveConversation({ ...conversation, openChargeId: charge.chargeId, stage: 'awaiting_payment' });
+  if (deps.pix.kind === 'link') {
+    const linkIntro = `${reply}\n\n💰 Valor: ${formatBRL(item.priceCents)}`;
+    remember(store, msg.jid, linkIntro);
+    return { replies: [linkIntro, payLinkMessage(charge.copyPaste), AWAITING_PAYMENT] };
+  }
   const intro = `${reply}\n\n💰 Valor: ${formatBRL(item.priceCents)}\nPix copia e cola na mensagem abaixo:`;
   remember(store, msg.jid, intro);
   return { replies: [intro, charge.copyPaste, AWAITING_PAYMENT] };

@@ -8,6 +8,7 @@ import { createEvolutionClient } from './evolution/client.js';
 import { createNimClient } from './llm/nim.js';
 import { startPublisher } from './publish.js';
 import { createFakePix } from './pix/fake.js';
+import { createInfinitePay } from './pix/infinitepay.js';
 import { buildServer } from './server.js';
 import { createEdgeTts } from './tts/edge.js';
 import { createStore } from './store.js';
@@ -20,8 +21,20 @@ try {
   const config = loadConfig(process.env);
   if (config.dbPath !== ':memory:') mkdirSync(dirname(config.dbPath), { recursive: true });
 
-  // Provedor de Pix FALSO até o dono escolher um real: nenhum pagamento é de verdade.
-  console.warn('ATENÇÃO: usando provedor de Pix FALSO (somente teste).');
+  // Fake por padrão (nenhum pagamento é de verdade); PIX_PROVIDER=infinitepay liga o Pix real.
+  const ip = config.infinitepay;
+  if (ip) {
+    console.log('Pix real: InfinitePay (Checkout Integrado). O cliente paga por um link.');
+  } else {
+    console.warn('ATENÇÃO: usando provedor de Pix FALSO (somente teste).');
+  }
+  const pix = ip
+    ? createInfinitePay({
+        handle: ip.handle,
+        apiKey: ip.apiKey,
+        webhookUrl: `${ip.publicBaseUrl}/webhook/infinitepay/${encodeURIComponent(ip.webhookToken)}`,
+      })
+    : createFakePix();
 
   const store = createStore(config.dbPath);
   const app = buildServer({
@@ -33,7 +46,7 @@ try {
       model: config.nimModel,
       timeoutMs: 20_000,
     }),
-    pix: createFakePix(),
+    pix,
     evolution: createEvolutionClient({
       baseUrl: config.evolutionUrl,
       apiKey: config.evolutionApiKey,
