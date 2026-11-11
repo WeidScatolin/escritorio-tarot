@@ -12,6 +12,7 @@ import { createInfinitePay } from './pix/infinitepay.js';
 import { createTunnelResolver } from './pix/tunnel.js';
 import { buildServer } from './server.js';
 import { createEdgeTts } from './tts/edge.js';
+import { createWhisperStt } from './stt/whisper.js';
 import { createStore } from './store.js';
 
 if (existsSync('.env')) {
@@ -57,6 +58,7 @@ try {
       instance: config.instance,
     }),
     ...(config.tts ? { tts: createEdgeTts({ voice: config.tts.voice }) } : {}),
+    ...(config.stt ? { stt: createWhisperStt(config.stt) } : {}),
     now: Date.now,
     assetsDir: fileURLToPath(new URL('../assets', import.meta.url)),
     notifyOwner: (text) => console.warn(`[AVISO AO DONO] ${text}`),

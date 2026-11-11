@@ -82,6 +82,9 @@ export function makeHarness(
       order.push(`media:${media.fileName}`);
       return { messageId: `sent-${counter}` };
     },
+    async getMedia() {
+      return { audio: Buffer.from('fake-ogg'), mimetype: 'audio/ogg; codecs=opus' };
+    },
     async sendAudio(jid, bytes, sendOpts) {
       if (flags.audioFails) throw new Error(`boom apikey=${API_KEY}`);
       counter += 1;

@@ -17,6 +17,7 @@ import type { LlmClient } from './llm/nim.js';
 import { confirmPayment } from './payments.js';
 import type { PaymentProof, PixProvider } from './pix/provider.js';
 import type { AdSpendRecord, Store } from './store.js';
+import type { SttClient } from './stt/whisper.js';
 import type { TtsClient } from './tts/types.js';
 import type { InboundMessage } from './types.js';
 
@@ -35,6 +36,8 @@ export type ServerDeps = {
   evolution: EvolutionClient;
   /** Síntese de voz da leitura. Ausente = tudo em texto (mesmo se config.tts estiver ligado). */
   tts?: TtsClient;
+  /** Transcrição dos áudios do cliente. Ausente = o cliente é convidado a escrever. */
+  stt?: SttClient;
   now: () => number;
   /** Espera de verdade em produção; nos testes é simulada. */
   sleep?: (ms: number) => Promise<void>;
@@ -55,6 +58,7 @@ const NOTICES_LIMIT = 50;
 const WINDOW_24H_MS = 24 * 3_600_000;
 const RATE_WINDOW_MS = 60_000;
 const VOICE_MAX_DELAY_MS = 10_000;
+const AUDIO_MAX_SECONDS = 180;
 
 // Só conversas individuais recebem mensagem. Grupos, status, canais etc. nunca.
 function isIndividualChat(jid: string): boolean {
@@ -304,6 +308,20 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (conversation.mode === 'ai') deps.store.saveConversation({ ...conversation, mode: 'human' });
   }
 
+  // Áudio do cliente vira texto (Whisper) e segue o fluxo normal. Sem STT, áudio longo ou falha: segue sem texto
+  // (a IA pede para escrever). Nunca lança.
+  async function transcribeIfAudio(msg: InboundMessage): Promise<InboundMessage | null> {
+    if (!msg.audio || !deps.stt || msg.text) return null;
+    if ((msg.audio.seconds ?? 0) > AUDIO_MAX_SECONDS) return null;
+    const media = await deps.evolution.getMedia(msg.messageId);
+    const text = media ? await deps.stt.transcribe(media.audio, media.mimetype) : null;
+    if (text === null) {
+      await safeNotify(`Não consegui transcrever o áudio do chat ${msg.jid}; a IA pediu para escrever.`);
+      return null;
+    }
+    return { ...msg, text };
+  }
+
   async function processMessage(msg: InboundMessage): Promise<void> {
     if (!deps.store.markSeen(msg.messageId)) return;
     if (msg.timestampSec * 1000 < deps.now() - MAX_MESSAGE_AGE_MS) return;
@@ -322,7 +340,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       engageAll: deps.config.engageAllChats,
     });
     if (!decision.engage) return;
-    debouncer.push(msg.jid, msg);
+    debouncer.push(msg.jid, (await transcribeIfAudio(msg)) ?? msg);
   }
 
   // Depois do silêncio: junta o que o cliente escreveu e responde uma única vez.

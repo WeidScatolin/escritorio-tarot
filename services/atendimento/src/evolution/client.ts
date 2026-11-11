@@ -13,6 +13,8 @@ export type EvolutionClient = {
   sendMedia(jid: string, media: MediaPayload, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
   /** Nota de voz (PTT) via sendWhatsAppAudio da Evolution v2. `audio` = bytes ogg/opus. */
   sendAudio(jid: string, audio: Buffer, opts?: { delayMs?: number }): Promise<{ messageId: string | null }>;
+  /** Baixa a mídia de uma mensagem recebida (áudio do cliente). null se não der. */
+  getMedia(messageId: string): Promise<{ audio: Buffer; mimetype: string } | null>;
 };
 
 export type EvolutionClientOptions = {
@@ -59,6 +61,23 @@ export function createEvolutionClient(opts: EvolutionClientOptions): EvolutionCl
     sendOpts?.delayMs && sendOpts.delayMs > 0 ? Math.round(sendOpts.delayMs) : undefined;
 
   return {
+    async getMedia(messageId) {
+      try {
+        const response = await doFetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(opts.instance)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', apikey: opts.apiKey },
+          body: JSON.stringify({ message: { key: { id: messageId } }, convertToMp4: false }),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
+        });
+        if (!response.ok) return null;
+        const json = (await response.json()) as { base64?: unknown; mimetype?: unknown };
+        if (typeof json.base64 !== 'string' || json.base64 === '') return null;
+        const raw = json.base64.replace(/^data:[^,]*,/, '');
+        return { audio: Buffer.from(raw, 'base64'), mimetype: typeof json.mimetype === 'string' ? json.mimetype : 'audio/ogg' };
+      } catch {
+        return null;
+      }
+    },
     sendText(jid, text, sendOpts) {
       const delayMs = delayOf(sendOpts);
       const body = delayMs ? { number: jid, text, delay: delayMs } : { number: jid, text };

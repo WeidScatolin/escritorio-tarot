@@ -19,6 +19,7 @@ describe('parseWebhook', () => {
       pushName: 'Maria',
       timestampSec: 1760000000,
       adReferral: null,
+      audio: null,
     });
   });
 

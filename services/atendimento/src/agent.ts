@@ -22,7 +22,7 @@ export type AgentResult = { replies: string[]; notifyOwner?: string };
 
 const HISTORY_LIMIT = 10;
 
-const ASK_TEXT = 'Oi! Por enquanto eu só consigo ler mensagens escritas. Pode me escrever o que você precisa? 🙏';
+const ASK_TEXT = 'Oi! Não consegui ouvir seu áudio por aqui. Pode me escrever o que você precisa? 🙏';
 const REPHRASE = 'Desculpa, não consegui entender direito. Pode reformular sua mensagem?';
 const SAFE_FALLBACK = 'Tive um probleminha aqui e já pedi ajuda. Em instantes alguém continua com você, tudo bem? 🙏';
 const OUT_OF_SCOPE = 'Posso te ajudar com as tiragens do nosso catálogo. Quer que eu te explique as opções?';
@@ -133,8 +133,19 @@ function buildSystemPrompt({ stage, sensitive }: PromptContext): string {
     '2) Quando souber o nome, em outra mensagem, pergunte o tema: o que ele quer saber (por exemplo, "o que meu ex está fazendo" ou "a pessoa com quem estou me envolvendo está sendo fiel"). Nunca pergunte nome e tema na mesma mensagem, para não parecer formulário. Se o cliente já disser nome e tema juntos, pule direto para a oferta.',
     '3) Assim que o cliente contar o tema, apresente as três tiragens com os preços do catálogo, sem fazer mais perguntas antes. Chame o cliente pelo nome.',
     '4) Quando o cliente confirmar claramente qual tiragem quer, use a ação "charge".',
+    'Como conversar (isso é o que faz a venda acontecer):',
+    '- Primeiro responda o que o cliente perguntou ou sentiu; só depois conduza. Quem se sente ouvido compra, quem se sente empurrado some.',
+    '- Use as palavras do próprio cliente (o nome da pessoa, a situação, o sentimento) para mostrar que você ouviu de verdade. Nada de frase genérica que serviria para qualquer um.',
+    '- Valide a emoção em uma frase curta ("imagino como essa dúvida pesa") e aponte para o alívio de ter uma resposta: as cartas ajudam a ver o momento com mais clareza.',
+    '- Desperte curiosidade sem revelar nada das cartas: diga que há muito a olhar sobre o tema dele, sem antecipar carta nem resultado.',
+    '- Ao apresentar as tiragens, recomende UMA com motivo ligado ao tema do cliente (ex.: dúvida sobre uma pessoa específica combina com a tiragem que olha o sentimento e o futuro dela) e deixe as outras como alternativa. Mensagem curta, uma pergunta no fim ("quer essa?").',
+    '- Cada mensagem termina com um próximo passo claro e fácil de responder (uma pergunta só). Nada de lista longa nem texto de bloco; escreva como gente no WhatsApp: 2 a 4 frases, tom caloroso e natural, no máximo um emoji.',
+    '- Objeção de preço ou "vou pensar": acolha sem pressão, lembre em uma frase o valor (uma resposta clara sobre o que está te tirando o sono por menos que um lanche) e deixe a porta aberta. Nunca invente escassez, urgência, desconto ou promessa.',
+    '- Dúvida se funciona/é confiável: seja transparente, as cartas são um espelho do momento e um apoio para refletir, não garantia do futuro.',
+    '- O cliente pode mandar áudio (já vem transcrito, às vezes com erros de fala): entenda a intenção e responda normalmente por escrito, sem comentar a transcrição.',
+    '- Se faltar informação, assuma o mais provável e avance; não repita pergunta que o cliente já respondeu e não peça mais de uma coisa por vez.',
     'Fale do que as cartas sugerem sobre o momento. Nunca afirme como fato o que uma terceira pessoa faz ou sente e nunca prometa resultado.',
-    'Responda SEMPRE e SOMENTE com um JSON: {"reply": "texto para o cliente", "action": {"kind": "none"}} ou {"reply": "...", "action": {"kind": "charge", "itemId": "<id do catálogo>"}}.',
+    'Responda SEMPRE e SOMENTE com um JSON: {"analise": "1 frase: o que o cliente sente/quer e qual o melhor próximo passo", "reply": "texto para o cliente", "action": {"kind": "none"}} ou {"analise": "...", "reply": "...", "action": {"kind": "charge", "itemId": "<id do catálogo>"}}. O campo "analise" é só para você pensar antes de responder (o cliente nunca vê).',
     'Use "charge" somente quando o cliente confirmar claramente que quer comprar aquele item.',
     'Só cite preços exatamente como estão no catálogo. Nunca dê desconto nem negocie preço.',
     'Fora do escopo: saúde, gravidez, morte, loteria e apostas. Sobre esses temas, responda com acolhimento, em poucas palavras, sem prever nem prometer nada, sem aconselhamento médico, jurídico ou financeiro, e diga que não consegue ajudar com isso.',

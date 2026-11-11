@@ -36,6 +36,9 @@ function parseValidated(body: unknown): InboundMessage | null {
   const extended = isObj(message.extendedTextMessage) ? message.extendedTextMessage : null;
   const text = str(message.conversation) ?? (extended ? str(extended.text) : null);
 
+  const audioMsg = isObj(message.audioMessage) ? message.audioMessage : null;
+  const seconds = audioMsg && typeof audioMsg.seconds === 'number' ? audioMsg.seconds : null;
+
   return {
     messageId,
     jid,
@@ -45,6 +48,7 @@ function parseValidated(body: unknown): InboundMessage | null {
     pushName: str(data.pushName),
     timestampSec,
     adReferral: extended ? parseAdReferral(extended.contextInfo) : null,
+    audio: audioMsg ? { seconds } : null,
   };
 }
 

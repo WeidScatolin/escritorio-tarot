@@ -40,7 +40,11 @@ export type Config = {
   tts?: TtsConfig | null;
   /** Pix real pela InfinitePay. null/ausente = provedor de Pix FALSO (padrão, só teste). */
   infinitepay?: InfinitePayConfig | null;
+  /** Transcrição de áudio do cliente (Whisper). null/ausente = áudio pede para escrever. */
+  stt?: SttConfig | null;
 };
+
+export type SttConfig = { baseUrl: string; model: string; apiKey: string | null };
 
 export type InfinitePayConfig = {
   /** InfiniteTag, sem o "$". */
@@ -166,6 +170,13 @@ function readInfinitePay(env: Record<string, string | undefined>, defaultWebhook
   };
 }
 
+function readStt(env: Record<string, string | undefined>): SttConfig | null {
+  const url = env.STT_URL?.trim() ?? '';
+  if (!url) return null;
+  if (!/^https?:\/\/[^\s/]+/.test(url)) throw new ConfigError('STT_URL inválida: use um endereço http(s)://');
+  return { baseUrl: url, model: env.STT_MODEL?.trim() || 'Systran/faster-whisper-small', apiKey: env.STT_API_KEY?.trim() || null };
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const missing = REQUIRED.filter((name) => !env[name]?.trim());
   if (missing.length > 0) {
@@ -199,6 +210,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     adSpendPollMinutes: readPositiveInt(env, 'AD_SPEND_POLL_MINUTES', 10),
     publish: readPublish(env),
     tts: readTts(env),
+    stt: readStt(env),
     infinitepay: readInfinitePay(env, env.WEBHOOK_TOKEN!.trim()),
   };
 }
