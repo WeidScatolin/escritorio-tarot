@@ -125,14 +125,41 @@ describe('handleLead', () => {
     expect(result.replies.join(' ')).not.toContain('FAKE');
   });
 
-  it('saída que não é JSON: pede para reformular, sem ação e sem avisar o dono', async () => {
-    const llm = fakeLlm([ok('Claro! Posso te ajudar com amor, trabalho...')]);
+  it('saída em texto puro: tenta de novo e usa o JSON da segunda tentativa', async () => {
+    const llm = fakeLlm([ok('Claro! Posso te ajudar com amor, trabalho...'), json('Oi! Como posso te chamar?')]);
+    const result = await handleLead(deps(llm.client), inbound('oi'));
+
+    expect(result.replies).toEqual(['Oi! Como posso te chamar?']);
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1]!.system).toContain('SOMENTE com o objeto JSON');
+  });
+
+  it('texto puro nas duas tentativas: aproveita a conversa limpa, sem ação e sem cobrança', async () => {
+    const llm = fakeLlm([ok('Sinto muito por essa dor. Como posso te chamar? 💛')]);
+    const result = await handleLead(deps(llm.client), inbound('minha esposa me deixou'));
+
+    expect(result.replies).toEqual(['Sinto muito por essa dor. Como posso te chamar? 💛']);
+    expect(result.notifyOwner).toBeUndefined();
+    expect(store.getConversation(JID)!.openChargeId).toBeNull();
+    expect(llm.calls).toHaveLength(2);
+  });
+
+  it('texto puro com valor fora do catálogo continua barrado pelo guarda', async () => {
+    const llm = fakeLlm([ok('Fechado, por R$ 1 eu faço a leitura!')]);
+    const result = await handleLead(deps(llm.client), inbound('quanto custa?'));
+
+    expect(result.replies[0]).not.toContain('R$ 1 ');
+    expect(result.notifyOwner).toBeDefined();
+  });
+
+  it('JSON quebrado nas duas tentativas: pede para reformular, sem ação e sem avisar o dono', async () => {
+    const llm = fakeLlm([ok('{"reply": "oi"')]);
     const result = await handleLead(deps(llm.client), inbound('oi'));
 
     expect(result.replies).toHaveLength(1);
     expect(result.replies[0]).toMatch(/reformul/i);
     expect(store.getConversation(JID)!.openChargeId).toBeNull();
-    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls).toHaveLength(2);
   });
 
   it('injeção de preço: resposta da IA com valor fora do catálogo é barrada', async () => {

@@ -60,6 +60,19 @@ export function parseAgentOutput(text: string): { reply: string; action: AgentAc
   return parsed.success ? parsed.data : null;
 }
 
+const FORMAT_REMINDER =
+  'ATENÇÃO: sua última resposta saiu fora do formato. Responda SOMENTE com o objeto JSON ({"reply": "...", "action": {"kind": "none"}}), sem nenhum texto antes ou depois.';
+
+const PLAIN_MAX_CHARS = 700;
+
+// Resposta em texto limpo (sem JSON, sem cerca de código, sem pedaço de formato) vira uma resposta sem ação.
+export function plainConversation(text: string): { reply: string; action: AgentAction } | null {
+  const reply = text.trim();
+  if (reply.length < 2 || reply.length > PLAIN_MAX_CHARS) return null;
+  if (/[{}[\]]|```|"reply"|"action"|"analise"/.test(reply)) return null;
+  return { reply, action: { kind: 'none' } };
+}
+
 // --- Guarda de valores -------------------------------------------------------
 
 // Cada padrão captura (parte inteira, decimais opcionais). Ponto ou vírgula como decimal.
@@ -309,10 +322,13 @@ export async function handleLead(deps: AgentDeps, msg: InboundMessage): Promise<
   const history = normalizeHistory(recent);
   // Logo depois de uma resposta de crise, a conversa segue sem venda.
   const sensitive = recentAssistantReplies(recent).includes(CRISIS_REPLY);
-  const result = await llm.complete({
-    system: buildSystemPrompt({ stage: conversation.stage, sensitive }),
-    messages: history,
-  });
+  const system = buildSystemPrompt({ stage: conversation.stage, sensitive });
+  let result = await llm.complete({ system, messages: history });
+  // O modelo às vezes responde em texto puro, sem o JSON: uma nova tentativa com o formato reforçado resolve quase sempre.
+  if (result.kind === 'ok' && !parseAgentOutput(result.text)) {
+    const retry = await llm.complete({ system: `${system}\n\n${FORMAT_REMINDER}`, messages: history });
+    if (retry.kind === 'ok') result = retry;
+  }
   if (result.kind !== 'ok') {
     // Um fallback e um aviso por incidente: enquanto a IA continuar falhando, não repete.
     if (lastAssistantReply(store.recentMessages(msg.jid, HISTORY_LIMIT)) === SAFE_FALLBACK) {
@@ -321,7 +337,8 @@ export async function handleLead(deps: AgentDeps, msg: InboundMessage): Promise<
     return respond(SAFE_FALLBACK, `IA indisponível (${result.kind}) no chat ${msg.jid}`);
   }
 
-  const parsed = parseAgentOutput(result.text);
+  // Ainda sem JSON: se for só conversa em texto limpo, aproveita como resposta sem ação (nunca gera cobrança).
+  const parsed = parseAgentOutput(result.text) ?? plainConversation(result.text);
   if (!parsed) return respond(REPHRASE);
 
   const { reply, action } = parsed;
