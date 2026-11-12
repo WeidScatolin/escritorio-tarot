@@ -30,3 +30,9 @@ CTA de todos: "Enviar mensagem pelo WhatsApp". Reserva (sem copy no rascunho): 0
 
 ## Aprendizado de público (WhatsApp)
 Em campanha de WhatsApp a Meta inclui "idade desconhecida" por padrão e, com Advantage+ ligado, a idade máxima é só sugestão. Para limitar de verdade: "Limitar ainda mais seu público" > "público limitado"; desmarcar "Usar como sugestão" e "Incluir idade desconhecida".
+
+## Atualização 2026-11-12 (preço corrigido)
+- Catálogo: 1 carta R$ 15, 3 cartas R$ 25, 5 cartas R$ 35. Nenhuma copy ou imagem pode dizer "3 cartas por R$ 15".
+- Imagens corrigidas em `Downloads/criativos-luna-tarot-v4/` (04 3h da manhã, 02 bloco de notas, 08 qual é a sua pergunta): preço agora "A PARTIR DE R$ 15". As outras (01, 06, 07) já estavam certas.
+- Teste B (B1, B2, B3) publicado em 2026-11-12, R$ 25/dia, 18-50, sem idade desconhecida. Campanha antiga "Luna Tarot | WhatsApp | CBO R$25" desativada (tinha 10 conversas a R$ 0,73).
+- Teste C (C1, C2, C3) corrigido e mantido como RASCUNHO.
