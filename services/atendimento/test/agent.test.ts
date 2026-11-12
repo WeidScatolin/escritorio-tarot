@@ -152,6 +152,13 @@ describe('handleLead', () => {
     expect(result.notifyOwner).toBeDefined();
   });
 
+  it('troca "assistente virtual" por "assistente de inteligência artificial"', async () => {
+    const llm = fakeLlm([json('Sou a assistente virtual da Luna 😊 Qual é o seu nome?')]);
+    const result = await handleLead(deps(llm.client), inbound('você é um robô?'));
+
+    expect(result.replies[0]).toBe('Sou a assistente de inteligência artificial da Luna 😊 Qual é o seu nome?');
+  });
+
   it('JSON quebrado nas duas tentativas: pede para reformular, sem ação e sem avisar o dono', async () => {
     const llm = fakeLlm([ok('{"reply": "oi"')]);
     const result = await handleLead(deps(llm.client), inbound('oi'));

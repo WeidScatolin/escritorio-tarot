@@ -123,6 +123,13 @@ const FORBIDDEN_CLAIMS: RegExp[] = [
   /(?<![\p{L}])n[aã]o\s+sou\s+(?:um\s+|uma\s+)?(?:rob[oô]|bot|ia|intelig[eê]ncia\s+artificial)(?![\p{L}])/iu,
 ];
 
+// "Virtual" soa vago sobre o que ela é: sempre a forma clara e honesta.
+export function normalizeIdentity(reply: string): string {
+  return reply.replace(/\b(assistente|atendente|taróloga)\s+virtual\b/giu, (_m, role: string) =>
+    /^assistente$/i.test(role) ? `${role} de inteligência artificial` : role,
+  );
+}
+
 export function revealsForbidden(reply: string): boolean {
   return CARD_NAME.test(reply) || FORBIDDEN_CLAIMS.some((pattern) => pattern.test(reply));
 }
@@ -341,7 +348,8 @@ export async function handleLead(deps: AgentDeps, msg: InboundMessage): Promise<
   const parsed = parseAgentOutput(result.text) ?? plainConversation(result.text);
   if (!parsed) return respond(REPHRASE);
 
-  const { reply, action } = parsed;
+  const { action } = parsed;
+  const reply = normalizeIdentity(parsed.reply);
   const allowed =
     action.kind === 'charge'
       ? [getItem(action.itemId)?.priceCents].filter((v): v is number => v !== undefined)
