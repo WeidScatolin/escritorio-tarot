@@ -1,5 +1,6 @@
 export type LlmResult =
-  | { kind: 'ok'; text: string }
+  /** `truncated`: o modelo parou por bater no limite de tokens (o texto veio cortado). */
+  | { kind: 'ok'; text: string; truncated?: true }
   | { kind: 'blocked' }
   | { kind: 'timeout' }
   | { kind: 'unavailable' };
@@ -8,6 +9,8 @@ export type LlmClient = {
   complete(input: {
     system: string;
     messages: { role: 'user' | 'assistant'; content: string }[];
+    /** Limite de tokens da resposta. Padrão: o da conversa (curta). A leitura das cartas pede mais. */
+    maxTokens?: number;
   }): Promise<LlmResult>;
 };
 
@@ -19,7 +22,7 @@ export type NimClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
-// Folga para leituras de 5 cartas e para o caso de o modelo gastar tokens antes da resposta.
+// Limite padrão, pensado para a conversa. A leitura das cartas passa o próprio limite (maxTokens).
 const MAX_TOKENS = 900;
 const TEMPERATURE = 0.3;
 const HTTP_CONTENT_FILTERED = 422;
@@ -30,23 +33,34 @@ const BLOCKED: LlmResult = { kind: 'blocked' };
 const TIMEOUT: LlmResult = { kind: 'timeout' };
 const UNAVAILABLE: LlmResult = { kind: 'unavailable' };
 
-function extractContent(payload: unknown): string | null {
+type Choice = { message?: { content?: unknown }; finish_reason?: unknown };
+
+function firstChoice(payload: unknown): Choice | null {
   if (typeof payload !== 'object' || payload === null) return null;
   const choices = (payload as { choices?: unknown }).choices;
   if (!Array.isArray(choices)) return null;
-  const message = (choices[0] as { message?: { content?: unknown } } | undefined)?.message;
-  const content = message?.content;
+  return (choices[0] as Choice | undefined) ?? null;
+}
+
+function extractContent(choice: Choice | null): string | null {
+  const content = choice?.message?.content;
   if (typeof content !== 'string') return null;
   return content.trim() === '' ? null : content;
+}
+
+// "length" (padrão OpenAI) ou "max_tokens" (como alguns provedores repassam o motivo do Claude).
+function wasTruncated(choice: Choice | null): boolean {
+  return choice?.finish_reason === 'length' || choice?.finish_reason === 'max_tokens';
 }
 
 async function readResponse(response: Response): Promise<LlmResult> {
   if (response.status === HTTP_CONTENT_FILTERED) return BLOCKED;
   if (response.status === HTTP_NOT_FOUND || response.status === HTTP_GONE) return UNAVAILABLE;
   if (!response.ok) return UNAVAILABLE;
-  const payload: unknown = await response.json();
-  const text = extractContent(payload);
-  return text === null ? UNAVAILABLE : { kind: 'ok', text };
+  const choice = firstChoice(await response.json());
+  const text = extractContent(choice);
+  if (text === null) return UNAVAILABLE;
+  return wasTruncated(choice) ? { kind: 'ok', text, truncated: true } : { kind: 'ok', text };
 }
 
 // Claude recusa `temperature` (HTTP 400) e, com o raciocínio ligado, gasta o limite de tokens pensando e devolve
@@ -74,7 +88,7 @@ export function createNimClient(opts: NimClientOptions): LlmClient {
           body: JSON.stringify({
             model: opts.model,
             messages: [{ role: 'system', content: input.system }, ...input.messages],
-            max_tokens: MAX_TOKENS,
+            max_tokens: input.maxTokens ?? MAX_TOKENS,
             // Os modelos Claude recentes recusam `temperature` (HTTP 400): nesses, o parâmetro é omitido.
             ...(isClaude(opts.model) ? { thinking: { type: 'disabled' } } : { temperature: TEMPERATURE }),
           }),

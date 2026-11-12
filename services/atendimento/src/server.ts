@@ -127,6 +127,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     pix: deps.pix,
     now: deps.now,
     ...(deps.rng ? { rng: deps.rng } : {}),
+    notifyOwner: (text) => safeNotify(text),
   };
 
   const debouncer = createDebouncer<InboundMessage>({

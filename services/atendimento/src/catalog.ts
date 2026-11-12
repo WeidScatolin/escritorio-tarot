@@ -8,6 +8,8 @@ export type CatalogItem = {
   positions: readonly string[];
   /** Instrução de estilo e tamanho da leitura, usada no prompt da IA. */
   readingStyle: string;
+  /** Para que tipo de dúvida esta tiragem serve melhor: base da recomendação na conversa (nunca citar preço aqui). */
+  bestFor: string;
 };
 
 export const CATALOG: readonly CatalogItem[] = [
@@ -19,6 +21,7 @@ export const CATALOG: readonly CatalogItem[] = [
     positions: ['A carta do momento'],
     readingStyle:
       'Leitura curta e direta, de 3 a 5 frases, com um olhar objetivo sobre a pergunta do cliente a partir dessa única carta.',
+    bestFor: 'uma pergunta simples e objetiva, quando a pessoa quer só um norte rápido sobre o momento',
   },
   {
     id: 'tiragem-intermediaria',
@@ -28,6 +31,8 @@ export const CATALOG: readonly CatalogItem[] = [
     positions: ['Passado', 'Presente', 'Futuro'],
     readingStyle:
       'Interprete cada carta na sua posição (passado, presente, futuro) em um parágrafo curto cada e feche com uma síntese de 2 a 3 frases.',
+    bestFor:
+      'dúvida sobre uma pessoa ou uma relação (ele volta? o que ele sente?), porque mostra de onde a história veio, como está agora e para onde tende',
   },
   {
     id: 'tiragem-completa',
@@ -37,6 +42,8 @@ export const CATALOG: readonly CatalogItem[] = [
     positions: ['Situação atual', 'O desafio', 'O que influencia', 'O conselho', 'A tendência'],
     readingStyle:
       'Interprete cada carta na sua posição em um parágrafo curto, relacione as cartas entre si e feche com um conselho final prático e acolhedor.',
+    bestFor:
+      'situação enrolada ou decisão difícil (insistir ou seguir em frente?), porque olha o desafio, o que influencia e termina com um conselho',
   },
 ];
 

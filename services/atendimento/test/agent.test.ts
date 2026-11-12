@@ -159,13 +159,15 @@ describe('handleLead', () => {
     expect(result.replies[0]).toBe('Sou a assistente de inteligência artificial da Luna 😊 Qual é o seu nome?');
   });
 
-  it('JSON quebrado nas duas tentativas: pede para reformular, sem ação e sem avisar o dono', async () => {
+  it('JSON quebrado nas duas tentativas: pede para contar de novo, sem ação e sem avisar o dono', async () => {
     const llm = fakeLlm([ok('{"reply": "oi"')]);
     const result = await handleLead(deps(llm.client), inbound('oi'));
 
     expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]).toMatch(/reformul/i);
+    expect(result.replies[0]).toMatch(/me conta de novo/i);
+    expect(result.notifyOwner).toBeUndefined();
     expect(store.getConversation(JID)!.openChargeId).toBeNull();
+    // Uma segunda chance para o modelo antes da mensagem genérica.
     expect(llm.calls).toHaveLength(2);
   });
 
