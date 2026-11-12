@@ -41,10 +41,11 @@ beforeEach(() => {
 });
 
 describe('fluxo: nome e tema em mensagens separadas', () => {
-  it('o prompt manda perguntar só o nome, depois só o tema, e oferecer ao saber o tema', async () => {
+  it('o prompt confirma o interesse em tarot e pergunta o nome, depois só o tema, e oferecer ao saber o tema', async () => {
     await handleLead(deps([json('Oi! Qual é o seu nome?')]), inbound('oi vi o anúncio'));
     const system = calls[0]!.system;
-    expect(system).toMatch(/pergunte apenas o nome/i);
+    expect(system).toMatch(/anúncio de tarot.*pergunte o nome/is);
+    expect(system).toMatch(/n[aã]o quer tarot.*n[aã]o insista/is);
     expect(system).toMatch(/em outra mensagem/i);
     expect(system).toMatch(/assim que.*tema.*apresente as tr[eê]s tiragens/is);
     expect(system).toMatch(/chame o cliente pelo nome/i);
