@@ -30,7 +30,7 @@ export function createWhisperStt(opts: WhisperOptions): SttClient {
           method: 'POST',
           headers: opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {},
           body: form,
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
         });
         if (!response.ok) return null;
         const json = (await response.json()) as { text?: unknown };
